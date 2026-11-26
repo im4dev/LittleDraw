@@ -19,6 +19,7 @@ pub mod manager_ui;
 pub mod rough;
 pub mod shape;
 pub mod text;
+pub mod plane;
 mod ui;
 pub mod workspace;
 

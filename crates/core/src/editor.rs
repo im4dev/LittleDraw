@@ -18,6 +18,7 @@ use crate::draw::{Color, DrawOp, Frame, Item};
 use crate::element::{Document, Element, Kind, Roundness};
 use crate::export::background;
 use crate::hit::hit;
+use crate::plane::{self, Plane};
 use crate::rough::Random;
 use crate::shape::{element_ops, outline};
 use crate::text::{self, Line, Script};
@@ -56,6 +57,7 @@ fn tool_from_key(c: char) -> Option<Tool> {
         'p' | '7' => Tool::Freedraw,
         't' | '8' => Tool::Text,
         '9' => Tool::Image,
+        'c' => Tool::Plane,
         _ => return None,
     })
 }
@@ -69,7 +71,7 @@ fn element_kind(tool: Tool) -> Option<Kind> {
         Tool::Line => Kind::Line,
         Tool::Freedraw => Kind::Freedraw,
         Tool::Text => Kind::Text,
-        Tool::Hand | Tool::Select | Tool::Image => return None,
+        Tool::Hand | Tool::Select | Tool::Image | Tool::Plane => return None,
     })
 }
 
@@ -218,9 +220,17 @@ enum Drag {
     Rotate { id: String, started: bool },
     /// Dragging the opacity slider.
     Slider,
+    /// Laying out a Cartesian plane; its elements are the ones from index
+    /// `first` on, rebuilt on every move.
+    Plane { origin: Point, first: usize, moved: bool },
     /// Selecting part of the text being edited; the caret follows the pointer.
     TextSelect,
 }
+
+/// Size of the plane a click with the plane tool makes, in units.
+const DEFAULT_PLANE_UNITS: f64 = 10.0;
+/// Pointer travel, in screen pixels, that turns a click into a drag.
+const DRAG_THRESHOLD: f64 = 4.0;
 
 /// An in-progress text edit. The text being typed is the element's
 /// `original_text`; `text` holds its wrapped form.
@@ -707,6 +717,34 @@ impl Editor {
             let (start, finish) = (binding::read(el, End::Start), self.candidate_binding(idx, tip));
             self.apply_bindings(idx, start, finish);
         }
+    }
+
+    // ----- Cartesian planes ----------------------------------------------
+
+    /// The plane a click at `p` makes: centered there, a few units each way.
+    fn default_plane(p: Point) -> Plane {
+        let half = Vec2::splat(DEFAULT_PLANE_UNITS / 2.0 * plane::UNIT);
+        Plane::from_drag(p - half, p + half, false)
+    }
+
+    /// Replaces the elements from index `first` on with `plane`'s, grouped.
+    fn lay_out_plane(&mut self, first: usize, plane: Plane) {
+        self.doc.elements.truncate(first);
+        let group = self.random_id();
+        let (color, family) = (self.style.stroke_color.clone(), self.style.font_family);
+        for mut el in plane.elements(&color, family) {
+            el.id = self.random_id();
+            el.seed = self.random_int();
+            el.version_nonce = self.random_int();
+            el.opacity = self.style.opacity;
+            el.group_ids = vec![group.clone()];
+            self.doc.elements.push(el);
+        }
+    }
+
+    /// `p`, or the grid intersection of a plane it is close to.
+    fn snapped(&self, p: Point) -> Point {
+        plane::snap(self.live(), p).unwrap_or(p)
     }
 
     // ----- groups ---------------------------------------------------------
@@ -1358,7 +1396,7 @@ impl Editor {
         }
         let p = self.to_scene(pos);
         if self.placing && button == Button::Primary {
-            return self.placing_click(p, pos);
+            return self.placing_click(self.snapped(p), pos);
         }
         if self.editing.is_some() {
             // A click on the text moves the caret (shift extends the
@@ -1374,7 +1412,13 @@ impl Editor {
             || (button == Button::Primary && (self.space_held || self.tool == Tool::Hand));
         if pan {
             self.drag = Some(Drag::Pan { last: pos });
+        } else if button == Button::Primary && self.tool == Tool::Plane {
+            self.checkpoint();
+            let first = self.doc.elements.len();
+            self.drag = Some(Drag::Plane { origin: p, first, moved: false });
+            self.lay_out_plane(first, Self::default_plane(p));
         } else if button == Button::Primary {
+            let p = if has_point_grips(&element_kind(self.tool).unwrap_or(Kind::Text)) { self.snapped(p) } else { p };
             match element_kind(self.tool) {
                 None => self.select_down(p, pos, mods),
                 Some(Kind::Text) => match self.top_hit(p).filter(|&i| is_text(&self.doc.elements[i].kind)) {
@@ -1501,7 +1545,7 @@ impl Editor {
         let nonce = self.random_int();
         let Some(mut drag) = self.drag.take() else {
             if self.placing {
-                self.placing_move(p, nonce);
+                self.placing_move(self.snapped(p), nonce);
             }
             return;
         };
@@ -1510,7 +1554,15 @@ impl Editor {
                 self.scroll += (pos - *last) / self.zoom;
                 *last = pos;
             }
+            Drag::Plane { origin, first, moved } => {
+                *moved |= (p - *origin).hypot() * self.zoom > DRAG_THRESHOLD;
+                if *moved {
+                    self.lay_out_plane(*first, Plane::from_drag(*origin, p, mods.shift));
+                }
+            }
             Drag::Create { origin } => {
+                let linear = self.doc.elements.last().is_some_and(|e| has_point_grips(&e.kind));
+                let p = if linear && !mods.shift { self.snapped(p) } else { p };
                 if let Some(el) = self.doc.elements.last_mut() {
                     drag_out(el, *origin, p, mods.shift);
                     Self::touch(el, nonce);
@@ -1658,6 +1710,11 @@ impl Editor {
     pub fn pointer_up(&mut self, _pos: Point, _button: Button, _mods: Modifiers) {
         self.bind_hover = None;
         match self.drag.take() {
+            Some(Drag::Plane { first, .. }) => {
+                let made = self.doc.elements[first..].iter().filter(|e| e.container_id.is_none());
+                self.selected = made.map(|e| e.id.clone()).collect();
+                self.tool = Tool::Select;
+            }
             Some(Drag::Create { .. }) => {
                 let Some(el) = self.doc.elements.last() else {
                     return;
@@ -2292,6 +2349,46 @@ mod tests {
 
     fn texts(ed: &Editor) -> Vec<&Element> {
         ed.live().filter(|e| e.kind == Kind::Text).collect()
+    }
+
+    #[test]
+    fn plane_tool_drags_out_a_grouped_plane_and_lines_snap_to_it() {
+        let mut ed = editor();
+        ed.key_down(Key::Char('c'), NONE);
+        assert_eq!(ed.tool(), Tool::Plane);
+        ed.pointer_down((300.0, 300.0).into(), Button::Primary, NONE);
+        ed.pointer_move((400.0, 400.0).into(), NONE);
+        ed.pointer_move((460.0, 460.0).into(), NONE);
+        ed.pointer_up((460.0, 460.0).into(), Button::Primary, NONE);
+        assert_eq!(ed.tool(), Tool::Select);
+        let plane = ed.live().find_map(Plane::of).expect("a plane was made");
+        assert_eq!((plane.columns, plane.rows), (4, 4), "160px is 4 units, rebuilt from the last move");
+        let count = ed.live().count();
+        assert_eq!(ed.selected.len(), count, "the whole plane is selected");
+        let group = &ed.document().elements[0].group_ids;
+        assert!(group.len() == 1 && ed.live().all(|e| &e.group_ids == group));
+
+        // A line drawn near two intersections lands on them.
+        let o = plane.origin();
+        ed.key_down(Key::Char('l'), NONE);
+        drag(&mut ed, (o.x + 3.0, o.y - 2.0), (o.x + plane.unit - 4.0, o.y - plane.unit + 5.0));
+        let line = ed.document().elements.last().unwrap();
+        assert_eq!((line.x, line.y), (o.x, o.y));
+        assert_eq!(line.points[1], [plane.unit, -plane.unit]);
+
+        ed.undo();
+        ed.undo();
+        assert_eq!(ed.live().count(), 0, "one undo step per plane");
+    }
+
+    #[test]
+    fn a_click_with_the_plane_tool_makes_a_ten_by_ten_plane() {
+        let mut ed = editor();
+        ed.set_tool(Tool::Plane);
+        click(&mut ed, (600.0, 450.0));
+        let plane = ed.live().find_map(Plane::of).unwrap();
+        assert_eq!((plane.columns, plane.rows), (10, 10));
+        assert_eq!(plane.origin(), Point::new(600.0, 450.0));
     }
 
     #[test]

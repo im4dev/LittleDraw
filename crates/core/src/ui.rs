@@ -128,11 +128,13 @@ pub enum Tool {
     Text,
     /// Not a mode: picking it asks the shell for an image to insert.
     Image,
+    /// Drag out a Cartesian plane; a click makes a 10×10 one.
+    Plane,
 }
 
 impl Tool {
     /// Toolbar order, same as Excalidraw's.
-    pub const ALL: [Tool; 10] = [
+    pub const ALL: [Tool; 11] = [
         Tool::Hand,
         Tool::Select,
         Tool::Rectangle,
@@ -143,6 +145,7 @@ impl Tool {
         Tool::Freedraw,
         Tool::Text,
         Tool::Image,
+        Tool::Plane,
     ];
 }
 
@@ -650,6 +653,15 @@ fn tool_icon(tool: Tool) -> BezPath {
             RoundedRect::new(2.5, 3.5, 17.5, 16.5, 2.0).to_path(0.1),
             poly(&[(2.5, 14.0), (7.0, 9.5), (10.5, 13.0), (13.0, 10.5), (17.5, 15.0)], false),
             Circle::new((13.0, 7.2), 1.3).to_path(0.1),
+        ]),
+        Tool::Plane => join(&[
+            poly(&[(10.0, 17.5), (10.0, 2.5)], false),
+            poly(&[(2.5, 10.0), (17.5, 10.0)], false),
+            poly(&[(7.8, 4.7), (10.0, 2.5), (12.2, 4.7)], false),
+            poly(&[(15.3, 7.8), (17.5, 10.0), (15.3, 12.2)], false),
+            poly(&[(5.0, 9.0), (5.0, 11.0)], false),
+            poly(&[(9.0, 14.5), (11.0, 14.5)], false),
+            Circle::new((14.0, 5.8), 1.2).to_path(0.1),
         ]),
         Tool::Text => join(&[
             poly(&[(4.0, 6.5), (4.0, 4.0), (16.0, 4.0), (16.0, 6.5)], false),
