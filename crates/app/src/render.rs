@@ -116,6 +116,11 @@ pub fn encode(scene: &mut Scene, frame: &Frame, scale: f64, viewport: Rect, imag
                     }
                     scene.stroke(&stroke, transform, color, None, &op.path);
                 }
+                Style::ClippedStroke { width, clip } => {
+                    scene.push_clip_layer(Fill::NonZero, transform, clip);
+                    scene.stroke(&Stroke::new(*width), transform, color, None, &op.path);
+                    scene.pop_layer();
+                }
                 Style::Image { file_id, crop, flip_x, flip_y } => {
                     let Some(image) = images.get(file_id, files) else {
                         scene.fill(Fill::NonZero, transform, color, None, &op.path);

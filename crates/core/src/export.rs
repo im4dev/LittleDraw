@@ -88,6 +88,7 @@ pub fn to_svg(doc: &Document) -> String {
     let _ = write!(out, "\n<rect width=\"100%\" height=\"100%\" fill=\"{}\"/>", paint(background));
 
     let origin = Affine::translate((-bounds.x0, -bounds.y0));
+    let mut clips = 0;
     for el in live(doc) {
         let ops = element_ops(el);
         if ops.is_empty() {
@@ -105,6 +106,10 @@ pub fn to_svg(doc: &Document) -> String {
                 image_svg(&mut out, doc.files[file_id]["dataURL"].as_str(), size, *crop, (*flip_x, *flip_y), op.color);
                 continue;
             }
+            if let Style::ClippedStroke { clip, .. } = &op.style {
+                clips += 1;
+                let _ = write!(out, "\n  <clipPath id=\"clip{clips}\"><path d=\"{}\"/></clipPath>", clip.to_svg());
+            }
             let _ = write!(out, "\n  <path d=\"{}\"", op.path.to_svg());
             let alpha = f64::from(op.color.a) / 255.0;
             match &op.style {
@@ -112,6 +117,16 @@ pub fn to_svg(doc: &Document) -> String {
                     let _ = write!(out, " fill=\"{}\"", paint(op.color));
                     if op.color.a < 255 {
                         let _ = write!(out, " fill-opacity=\"{alpha}\"");
+                    }
+                }
+                Style::ClippedStroke { width, .. } => {
+                    let _ = write!(
+                        out,
+                        " fill=\"none\" stroke=\"{}\" stroke-width=\"{width}\" stroke-linecap=\"round\" clip-path=\"url(#clip{clips})\"",
+                        paint(op.color)
+                    );
+                    if op.color.a < 255 {
+                        let _ = write!(out, " stroke-opacity=\"{alpha}\"");
                     }
                 }
                 Style::Stroke { width, dash } => {

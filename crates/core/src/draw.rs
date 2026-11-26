@@ -81,6 +81,9 @@ pub enum Style {
     Fill,
     /// Round caps and joins are implied. An empty `dash` means a solid line.
     Stroke { width: f64, dash: Vec<f64> },
+    /// A solid stroke painted only inside `clip` (non-zero), for fill
+    /// patterns whose sketchy lines would otherwise poke out of the shape.
+    ClippedStroke { width: f64, clip: BezPath },
     /// The bitmap stored under `file_id` in the document's `files`,
     /// stretched over the path's bounding box. The op's color is what to
     /// paint when the bitmap cannot be shown.

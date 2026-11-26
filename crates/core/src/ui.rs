@@ -354,7 +354,7 @@ fn layout_tools(size: Size, tool: Tool, panel: Option<(&Style, Sections)>, palet
         colors(&mut chrome, &mut y, "Fondo", ColorTarget::Background);
     }
     if sections.fill {
-        let options = [FillStyle::Hachure, FillStyle::CrossHatch, FillStyle::Solid];
+        let options = [FillStyle::Hachure, FillStyle::CrossHatch, FillStyle::Grid, FillStyle::Solid];
         row(&mut chrome, &mut y, "Relleno", &options.map(|f| (Action::Fill(f), style.fill_style == f)));
     }
     if sections.stroke_width {
@@ -551,6 +551,10 @@ fn icon(action: Action, ink: Color) -> Vec<DrawOp> {
         }
         Action::Fill(FillStyle::Solid) => {
             vec![DrawOp::fill(frame(), ink)]
+        }
+        Action::Fill(FillStyle::Grid) => {
+            let lines = [6.25, 10.0, 13.75].map(|t| join(&[poly(&[(t, 2.5), (t, 17.5)], false), poly(&[(2.5, t), (17.5, t)], false)]));
+            vec![DrawOp::stroke(join(&lines), ink, 1.0), DrawOp::stroke(frame(), ink, 1.5)]
         }
         Action::Fill(style) => {
             let mut ops = vec![DrawOp::stroke(hatch(false), ink, 1.0)];
