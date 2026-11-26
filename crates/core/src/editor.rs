@@ -6,6 +6,7 @@
 
 use std::collections::{HashMap, HashSet};
 use std::f64::consts::{FRAC_PI_2, TAU};
+use std::ops::Range;
 use std::rc::Rc;
 
 use kurbo::{Affine, BezPath, Circle, Point, Rect, Shape, Size, Vec2};
@@ -19,7 +20,7 @@ use crate::export::background;
 use crate::hit::hit;
 use crate::rough::Random;
 use crate::shape::{element_ops, outline};
-use crate::text::{self, Line};
+use crate::text::{self, Line, Script};
 use crate::ui::{self, Action, Chrome, ColorTarget, Layer, Sections, Style};
 
 pub use crate::ui::{Theme, Tool};
@@ -217,6 +218,8 @@ enum Drag {
     Rotate { id: String, started: bool },
     /// Dragging the opacity slider.
     Slider,
+    /// Selecting part of the text being edited; the caret follows the pointer.
+    TextSelect,
 }
 
 /// An in-progress text edit. The text being typed is the element's
@@ -225,6 +228,10 @@ struct TextEdit {
     id: String,
     /// Byte offset of the caret in `original_text`.
     caret: usize,
+    /// Other end of the selected text; equal to `caret` when none is.
+    anchor: usize,
+    /// Typed characters become sub- or superscripts (Ctrl+= / Ctrl++).
+    script: Option<Script>,
     /// `modified` before the edit began, restored if nothing changes.
     was_modified: bool,
 }
@@ -863,7 +870,7 @@ impl Editor {
         };
         self.relayout_text(idx);
         self.selected.clear();
-        self.editing = Some(TextEdit { id, caret: 0, was_modified });
+        self.editing = Some(TextEdit { id, caret: 0, anchor: 0, script: None, was_modified });
     }
 
     /// Starts editing the existing text at `idx`, caret at the end.
@@ -872,7 +879,8 @@ impl Editor {
         self.checkpoint();
         let el = &mut self.doc.elements[idx];
         let source = el.original_text.get_or_insert_with(|| el.text.clone().unwrap_or_default());
-        let edit = TextEdit { id: el.id.clone(), caret: source.len(), was_modified };
+        let end = source.len();
+        let edit = TextEdit { id: el.id.clone(), caret: end, anchor: end, script: None, was_modified };
         self.selected.clear();
         self.drag = None;
         self.editing = Some(edit);
@@ -954,9 +962,21 @@ impl Editor {
             .map_or(line.start, |(at, _)| at)
     }
 
-    /// Inserts typed or composed text at the caret. Ignored unless a text
-    /// is being edited.
+    /// Inserts typed or composed text at the caret, in place of the
+    /// selected text. Ignored unless a text is being edited.
     pub fn text_input(&mut self, input: &str) {
+        let script = self.editing.as_ref().and_then(|e| e.script);
+        match script {
+            Some(script) => {
+                let scripted: String = input.chars().map(|c| text::to_script(c, script).unwrap_or(c)).collect();
+                self.insert_text(&scripted);
+            }
+            None => self.insert_text(input),
+        }
+    }
+
+    /// Inserts `input` as is, in place of the selected text.
+    fn insert_text(&mut self, input: &str) {
         // Tabs become spaces, as in Excalidraw, so they measure and render.
         let clean: String = input
             .replace("\r\n", "\n")
@@ -965,14 +985,37 @@ impl Editor {
             .filter(|c| !c.is_control() || *c == '\n')
             .collect();
         if !clean.is_empty() {
-            self.edit_source(|source, caret| {
-                source.insert_str(*caret, &clean);
-                *caret += clean.len();
-            });
+            self.replace_selection(&clean);
         }
     }
 
+    /// The selected part of the text being edited, as a byte range.
+    fn text_selection(&self) -> Option<Range<usize>> {
+        let edit = self.editing.as_ref()?;
+        let len = self.doc.elements[self.index_of(&edit.id)?].original_text.as_deref().map_or(0, str::len);
+        let (a, b) = (edit.anchor.min(len), edit.caret.min(len));
+        (a != b).then(|| a.min(b)..a.max(b))
+    }
+
+    /// The selected part of the text being edited.
+    fn selected_text(&self) -> Option<&str> {
+        let range = self.text_selection()?;
+        let (idx, _) = self.edit_target()?;
+        self.doc.elements[idx].original_text.as_deref().map(|s| &s[range])
+    }
+
+    /// Replaces the selected text (or inserts at the caret) with `with`.
+    fn replace_selection(&mut self, with: &str) {
+        let range = self.text_selection();
+        self.edit_source(|source, caret| {
+            let range = range.unwrap_or(*caret..*caret);
+            source.replace_range(range.clone(), with);
+            *caret = range.start + with.len();
+        });
+    }
+
     /// Applies `change` to the edited text and its caret, then re-wraps.
+    /// Leaves nothing selected.
     fn edit_source(&mut self, change: impl FnOnce(&mut String, &mut usize)) {
         let Some((idx, _)) = self.edit_target() else {
             return;
@@ -981,8 +1024,36 @@ impl Editor {
         if let Some(edit) = &mut self.editing {
             edit.caret = edit.caret.min(source.len());
             change(source, &mut edit.caret);
+            edit.anchor = edit.caret;
         }
         self.relayout_text(idx);
+    }
+
+    /// Turns the selected text into `script` characters, or back to plain
+    /// ones if it already is. With nothing selected, toggles whether typed
+    /// characters become `script`.
+    fn toggle_script(&mut self, script: Script) {
+        let (Some(range), Some(picked)) = (self.text_selection(), self.selected_text()) else {
+            if let Some(edit) = &mut self.editing {
+                edit.script = if edit.script == Some(script) { None } else { Some(script) };
+            }
+            return;
+        };
+        let base = |c: char| text::script_of(c).map_or(c, |(base, _)| base);
+        let undo = picked.chars().all(|c| c.is_whitespace() || text::script_of(c).is_some_and(|(_, s)| s == script));
+        let converted: String = picked
+            .chars()
+            .map(|c| if undo { base(c) } else { text::to_script(base(c), script).unwrap_or(c) })
+            .collect();
+        let start = range.start;
+        self.edit_source(|source, caret| {
+            source.replace_range(range, &converted);
+            *caret = start + converted.len();
+        });
+        // The converted text stays selected.
+        if let Some(edit) = &mut self.editing {
+            edit.anchor = start;
+        }
     }
 
     fn edit_key(&mut self, key: Key, mods: Modifiers) {
@@ -990,17 +1061,25 @@ impl Editor {
             self.editing = None;
             return;
         };
+        let selection = self.text_selection();
         let (lines, source) = self.edit_lines(idx);
         let row = Self::caret_line(&lines, caret);
-        let prev = source[..caret].char_indices().next_back().map_or(caret, |(i, _)| i);
-        let next = source[caret..].chars().next().map_or(caret, |c| caret + c.len_utf8());
+        let prev = if mods.ctrl {
+            word_start(source, caret)
+        } else {
+            source[..caret].char_indices().next_back().map_or(caret, |(i, _)| i)
+        };
+        let next =
+            if mods.ctrl { word_end(source, caret) } else { source[caret..].chars().next().map_or(caret, |c| caret + c.len_utf8()) };
         let vertical = |to: Option<&Line>| {
             to.map(|line| self.offset_at_x(idx, line, source, self.caret_x(idx, &lines[row], source, caret)))
         };
+        let len = source.len();
         let moved = match key {
             Key::Escape => return self.commit_text(),
             Key::Enter if mods.ctrl => return self.commit_text(),
             Key::Enter => return self.text_input("\n"),
+            Key::Backspace | Key::Delete if selection.is_some() => return self.replace_selection(""),
             Key::Backspace => {
                 return self.edit_source(|source, at| {
                     source.replace_range(prev..*at, "");
@@ -1008,38 +1087,79 @@ impl Editor {
                 })
             }
             Key::Delete => return self.edit_source(|source, at| source.replace_range(*at..next, "")),
-            Key::Left => Some(prev),
-            Key::Right => Some(next),
+            Key::Char('a') if mods.ctrl => {
+                if let Some(edit) = &mut self.editing {
+                    (edit.anchor, edit.caret) = (0, len);
+                }
+                return;
+            }
+            // Word's shortcuts: Ctrl+= subscript, Ctrl+Shift+= (Ctrl++)
+            // superscript. Shift is ignored for `=`, which needs it on
+            // Spanish layouts.
+            Key::Char('=') if mods.ctrl => return self.toggle_script(Script::Sub),
+            Key::Char('+') if mods.ctrl => return self.toggle_script(Script::Super),
+            // Without shift, an arrow first collapses the selection to its side.
+            Key::Left => Some(selection.filter(|_| !mods.shift).map_or(prev, |r| r.start)),
+            Key::Right => Some(selection.filter(|_| !mods.shift).map_or(next, |r| r.end)),
+            Key::Home if mods.ctrl => Some(0),
+            Key::End if mods.ctrl => Some(len),
             Key::Home => Some(lines[row].start),
             Key::End => Some(lines[row].end),
-            Key::Up => vertical(row.checked_sub(1).map(|r| &lines[r])),
-            Key::Down => vertical(lines.get(row + 1)),
+            Key::Up => vertical(row.checked_sub(1).map(|r| &lines[r])).or(Some(0)),
+            Key::Down => vertical(lines.get(row + 1)).or(Some(len)),
             Key::Char(_) | Key::Space => None,
         };
         if let (Some(at), Some(edit)) = (moved, &mut self.editing) {
             edit.caret = at;
+            if !mods.shift {
+                edit.anchor = at;
+            }
         }
     }
 
-    /// Places the caret at the scene point `p` if it lies on the text being
-    /// edited; returns whether it did.
-    fn caret_to_point(&mut self, p: Point) -> bool {
-        let Some((idx, _)) = self.edit_target() else {
-            return false;
-        };
+    /// Byte offset in the text being edited closest to the scene point `p`,
+    /// and whether `p` lies on that text.
+    fn edit_offset_at(&self, p: Point) -> Option<(usize, bool)> {
+        let (idx, _) = self.edit_target()?;
         let el = &self.doc.elements[idx];
         let local = el.transform().inverse() * p;
-        if !el.local_bounds().inflate(HIT_TOLERANCE, HIT_TOLERANCE).contains(local) {
-            return false;
-        }
+        let inside = el.local_bounds().inflate(HIT_TOLERANCE, HIT_TOLERANCE).contains(local);
         let (_, size, line_height) = Self::font(el);
         let (lines, source) = self.edit_lines(idx);
         let row = ((local.y / (size * line_height)).floor().max(0.0) as usize).min(lines.len() - 1);
-        let at = self.offset_at_x(idx, &lines[row], source, local.x);
+        Some((self.offset_at_x(idx, &lines[row], source, local.x), inside))
+    }
+
+    /// Places the caret at the scene point `p` if it lies on the text being
+    /// edited, extending the selection with `extend`; returns whether it did.
+    fn caret_to_point(&mut self, p: Point, extend: bool) -> bool {
+        let Some((at, true)) = self.edit_offset_at(p) else {
+            return false;
+        };
         if let Some(edit) = &mut self.editing {
             edit.caret = at;
+            if !extend {
+                edit.anchor = at;
+            }
         }
         true
+    }
+
+    /// Selects the word of the text being edited under the scene point `p`.
+    fn select_word_at(&mut self, p: Point) {
+        let Some((at, true)) = self.edit_offset_at(p) else {
+            return;
+        };
+        let Some((idx, _)) = self.edit_target() else {
+            return;
+        };
+        let source = self.doc.elements[idx].original_text.as_deref().unwrap_or("");
+        let start = source[..at].trim_end_matches(char::is_alphanumeric).len();
+        let rest = &source[at..];
+        let end = at + rest.len() - rest.trim_start_matches(char::is_alphanumeric).len();
+        if let Some(edit) = &mut self.editing {
+            (edit.anchor, edit.caret) = (start, end);
+        }
     }
 
     // ----- style ----------------------------------------------------------
@@ -1241,8 +1361,11 @@ impl Editor {
             return self.placing_click(p, pos);
         }
         if self.editing.is_some() {
-            // A click on the text moves the caret; anywhere else ends the edit.
-            if button != Button::Primary || !self.caret_to_point(p) {
+            // A click on the text moves the caret (shift extends the
+            // selection) and dragging selects; anywhere else ends the edit.
+            if button == Button::Primary && self.caret_to_point(p, mods.shift) {
+                self.drag = Some(Drag::TextSelect);
+            } else {
                 self.commit_text();
             }
             return;
@@ -1283,6 +1406,9 @@ impl Editor {
         if self.placing {
             // The first click of the pair already fixed the last point.
             return self.finish_placing();
+        }
+        if self.editing.is_some() && self.chrome().hit(pos).is_none() {
+            return self.select_word_at(self.to_scene(pos));
         }
         if self.tool != Tool::Select || self.editing.is_some() || self.chrome().hit(pos).is_some() {
             return;
@@ -1517,6 +1643,12 @@ impl Editor {
             Drag::Slider => {
                 if let Some(value) = self.chrome().slider_value(pos) {
                     self.apply(Action::Opacity(value), false);
+                }
+            }
+            Drag::TextSelect => {
+                let at = self.edit_offset_at(p).map(|(at, _)| at);
+                if let (Some(at), Some(edit)) = (at, &mut self.editing) {
+                    edit.caret = at;
                 }
             }
         }
@@ -1761,7 +1893,11 @@ impl Editor {
 
     /// The selection in Excalidraw's clipboard format, for the shell to put
     /// on the system clipboard. `None` if nothing is selected.
+    /// While a text is being edited, its selected part as plain text.
     pub fn copy(&self) -> Option<String> {
+        if self.editing.is_some() {
+            return self.selected_text().map(str::to_owned);
+        }
         let elements: Vec<&Element> = self.targets().into_iter().map(|i| &self.doc.elements[i]).collect();
         (!elements.is_empty())
             .then(|| json!({ "type": CLIPBOARD_TYPE, "elements": elements, "files": {} }).to_string())
@@ -1770,6 +1906,10 @@ impl Editor {
     /// Like [`Self::copy`], and deletes the selection.
     pub fn cut(&mut self) -> Option<String> {
         let copied = self.copy()?;
+        if self.editing.is_some() {
+            self.replace_selection("");
+            return Some(copied);
+        }
         self.delete_selected();
         Some(copied)
     }
@@ -1779,7 +1919,7 @@ impl Editor {
     /// (or into the text being edited).
     pub fn paste(&mut self, clipboard: &str) {
         if self.editing.is_some() {
-            return self.text_input(clipboard);
+            return self.insert_text(clipboard);
         }
         let center = Point::new(self.size.width / 2.0, self.size.height / 2.0);
         let at = self.to_scene(self.pointer.unwrap_or(center));
@@ -1970,20 +2110,57 @@ impl Editor {
         let el = &self.doc.elements[idx];
         let (_, size, line_height) = Self::font(el);
         let (lines, source) = self.edit_lines(idx);
+        let to_screen = self.view() * el.transform();
+        let line_px = size * line_height;
+        if let Some(range) = self.text_selection() {
+            let accent = ui::colors(self.theme).accent;
+            for (row, line) in lines.iter().enumerate() {
+                let (a, b) = (range.start.max(line.start), range.end.min(line.end));
+                if a > b {
+                    continue;
+                }
+                let x0 = self.caret_x(idx, line, source, a);
+                // A selected line break shows as a little extra width.
+                let x1 = self.caret_x(idx, line, source, b) + if range.end > line.end { size * 0.25 } else { 0.0 };
+                if x1 > x0 {
+                    let top = row as f64 * line_px;
+                    let rect = Rect::new(x0, top, x1, top + line_px).to_path(0.1);
+                    ops.push(DrawOp::fill(to_screen * rect, Color { a: 80, ..accent }));
+                }
+            }
+        }
         let row = Self::caret_line(&lines, caret);
         let x = self.caret_x(idx, &lines[row], source, caret);
-        let top = row as f64 * size * line_height;
+        let top = row as f64 * line_px;
+        // While typing sub- or superscripts the caret is short and sits low or high.
+        let (from, to) = match self.editing.as_ref().and_then(|e| e.script) {
+            Some(Script::Sub) => (0.45, 1.0),
+            Some(Script::Super) => (0.0, 0.55),
+            None => (0.0, 1.0),
+        };
         let mut path = BezPath::new();
-        path.move_to((x, top));
-        path.line_to((x, top + size * line_height));
+        path.move_to((x, top + from * line_px));
+        path.line_to((x, top + to * line_px));
         // The caret takes the text's color, as shown in this theme.
         let color = match (Color::parse(&el.stroke_color), self.theme) {
             (Some(color), Theme::Dark) => color.dark(),
             (Some(color), Theme::Light) => color,
             (None, _) => ui::colors(self.theme).accent,
         };
-        ops.push(DrawOp::stroke(self.view() * el.transform() * path, color, 1.5));
+        ops.push(DrawOp::stroke(to_screen * path, color, 1.5));
     }
+}
+
+/// Start of the word before byte offset `at` (skipping spaces first).
+fn word_start(s: &str, at: usize) -> usize {
+    s[..at].trim_end_matches(|c: char| !c.is_alphanumeric()).trim_end_matches(char::is_alphanumeric).len()
+}
+
+/// End of the word after byte offset `at` (skipping spaces first).
+fn word_end(s: &str, at: usize) -> usize {
+    let rest = &s[at..];
+    let word = rest.trim_start_matches(|c: char| !c.is_alphanumeric());
+    at + rest.len() - word.trim_start_matches(char::is_alphanumeric).len()
 }
 
 /// Shapes a freshly created element from the drag `origin` → `p`.
@@ -2339,6 +2516,90 @@ mod tests {
         ed.key_down(Key::Delete, NONE);
         ed.key_down(Key::Enter, CTRL);
         assert_eq!(texts(&ed)[0].text.as_deref(), Some("aXbc\nd"));
+    }
+
+    const SHIFT: Modifiers = Modifiers { shift: true, ctrl: false, alt: false };
+    const CTRL_SHIFT: Modifiers = Modifiers { shift: true, ctrl: true, alt: false };
+
+    /// Source of the text being edited.
+    fn edited(ed: &Editor) -> &str {
+        let (idx, _) = ed.edit_target().unwrap();
+        ed.document().elements[idx].original_text.as_deref().unwrap()
+    }
+
+    #[test]
+    fn selected_text_is_replaced_copied_and_cut() {
+        let mut ed = editor();
+        ed.double_click(Point::new(400.0, 400.0));
+        ed.text_input("hola mundo");
+        for _ in 0..5 {
+            ed.key_down(Key::Left, SHIFT);
+        }
+        assert_eq!(ed.copy().as_deref(), Some("mundo"));
+        ed.text_input("gente");
+        assert_eq!(edited(&ed), "hola gente");
+
+        // Ctrl+Shift+Left selects a word; cut removes it.
+        ed.key_down(Key::Left, CTRL_SHIFT);
+        assert_eq!(ed.cut().as_deref(), Some("gente"));
+        assert_eq!(edited(&ed), "hola ");
+        ed.paste("tú");
+        ed.key_down(Key::Char('a'), CTRL);
+        ed.key_down(Key::Backspace, NONE);
+        assert_eq!(edited(&ed), "");
+        assert_eq!(ed.copy(), None);
+    }
+
+    #[test]
+    fn dragging_and_double_clicking_select_text() {
+        let mut ed = editor();
+        ed.double_click(Point::new(400.0, 400.0));
+        ed.text_input("uno dos tres");
+        let el = texts(&ed)[0].clone();
+        let mid_y = el.y + el.height / 2.0;
+        drag(&mut ed, (el.x - 1.0, mid_y), (el.x + el.width + 1.0, mid_y));
+        assert!(ed.is_editing_text());
+        assert_eq!(ed.copy().as_deref(), Some("uno dos tres"));
+
+        // A plain click drops the selection; a double click picks a word.
+        let dos = el.x + text::line_width("uno d", 5, 20.0);
+        click(&mut ed, (dos, mid_y));
+        assert_eq!(ed.copy(), None);
+        ed.double_click(Point::new(dos, mid_y));
+        assert_eq!(ed.copy().as_deref(), Some("dos"));
+        // Shift+Right grows it, Right alone collapses to its end.
+        ed.key_down(Key::Right, SHIFT);
+        assert_eq!(ed.copy().as_deref(), Some("dos "));
+        ed.key_down(Key::Right, NONE);
+        ed.text_input("|");
+        assert_eq!(edited(&ed), "uno dos |tres");
+    }
+
+    #[test]
+    fn ctrl_equals_makes_subscripts_and_ctrl_plus_superscripts() {
+        let mut ed = editor();
+        ed.double_click(Point::new(400.0, 400.0));
+        // Toggled before typing: only the typed characters change.
+        ed.text_input("V");
+        ed.key_down(Key::Char('='), CTRL);
+        ed.text_input("0");
+        ed.key_down(Key::Char('='), CTRL);
+        ed.text_input(" = x2");
+        assert_eq!(edited(&ed), "V₀ = x2");
+
+        // On a selection: converts it, and converts it back the second time.
+        ed.key_down(Key::Left, SHIFT);
+        ed.key_down(Key::Char('+'), CTRL_SHIFT);
+        assert_eq!(edited(&ed), "V₀ = x²");
+        assert_eq!(ed.copy().as_deref(), Some("²"));
+        ed.key_down(Key::Char('='), CTRL);
+        assert_eq!(edited(&ed), "V₀ = x₂");
+        ed.key_down(Key::Char('='), CTRL);
+        assert_eq!(edited(&ed), "V₀ = x2");
+        // Letters Unicode has no subscript for stay as they are.
+        ed.key_down(Key::Char('a'), CTRL);
+        ed.key_down(Key::Char('='), CTRL);
+        assert_eq!(edited(&ed), "V₀ ₌ ₓ₂");
     }
 
     #[test]

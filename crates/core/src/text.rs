@@ -160,6 +160,64 @@ fn glyph(family_id: i64, ch: char) -> Option<Glyph> {
     family(family_id)
         .glyph(ch)
         .or_else(|| FALLBACK_FAMILIES.iter().find_map(|&id| family(id).glyph(ch)))
+        .or_else(|| scripted_glyph(family_id, ch))
+}
+
+/// Vertical placement of a sub- or superscript character.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Script {
+    Sub,
+    Super,
+}
+
+/// Unicode subscript and superscript characters with their base form.
+const SCRIPTS: &[(char, char, Script)] = {
+    use Script::{Sub, Super};
+    &[
+        ('0', '₀', Sub), ('1', '₁', Sub), ('2', '₂', Sub), ('3', '₃', Sub), ('4', '₄', Sub),
+        ('5', '₅', Sub), ('6', '₆', Sub), ('7', '₇', Sub), ('8', '₈', Sub), ('9', '₉', Sub),
+        ('+', '₊', Sub), ('-', '₋', Sub), ('=', '₌', Sub), ('(', '₍', Sub), (')', '₎', Sub),
+        ('a', 'ₐ', Sub), ('e', 'ₑ', Sub), ('h', 'ₕ', Sub), ('i', 'ᵢ', Sub), ('j', 'ⱼ', Sub),
+        ('k', 'ₖ', Sub), ('l', 'ₗ', Sub), ('m', 'ₘ', Sub), ('n', 'ₙ', Sub), ('o', 'ₒ', Sub),
+        ('p', 'ₚ', Sub), ('r', 'ᵣ', Sub), ('s', 'ₛ', Sub), ('t', 'ₜ', Sub), ('u', 'ᵤ', Sub),
+        ('v', 'ᵥ', Sub), ('x', 'ₓ', Sub),
+        ('0', '⁰', Super), ('1', '¹', Super), ('2', '²', Super), ('3', '³', Super), ('4', '⁴', Super),
+        ('5', '⁵', Super), ('6', '⁶', Super), ('7', '⁷', Super), ('8', '⁸', Super), ('9', '⁹', Super),
+        ('+', '⁺', Super), ('-', '⁻', Super), ('=', '⁼', Super), ('(', '⁽', Super), (')', '⁾', Super),
+        ('a', 'ᵃ', Super), ('b', 'ᵇ', Super), ('c', 'ᶜ', Super), ('d', 'ᵈ', Super), ('e', 'ᵉ', Super),
+        ('f', 'ᶠ', Super), ('g', 'ᵍ', Super), ('h', 'ʰ', Super), ('i', 'ⁱ', Super), ('j', 'ʲ', Super),
+        ('k', 'ᵏ', Super), ('l', 'ˡ', Super), ('m', 'ᵐ', Super), ('n', 'ⁿ', Super), ('o', 'ᵒ', Super),
+        ('p', 'ᵖ', Super), ('r', 'ʳ', Super), ('s', 'ˢ', Super), ('t', 'ᵗ', Super), ('u', 'ᵘ', Super),
+        ('v', 'ᵛ', Super), ('w', 'ʷ', Super), ('x', 'ˣ', Super), ('y', 'ʸ', Super), ('z', 'ᶻ', Super),
+    ]
+};
+
+/// `ch` written as a `script` character, if Unicode has one for it.
+pub fn to_script(ch: char, script: Script) -> Option<char> {
+    let ch = if ch == '−' { '-' } else { ch };
+    SCRIPTS.iter().find(|&&(base, _, s)| base == ch && s == script).map(|&(_, scripted, _)| scripted)
+}
+
+/// The base character and placement of a sub- or superscript `ch`.
+pub fn script_of(ch: char) -> Option<(char, Script)> {
+    SCRIPTS.iter().find(|&&(_, scripted, _)| scripted == ch).map(|&(base, _, s)| (base, s))
+}
+
+/// Size of a synthesized sub- or superscript, relative to the text.
+const SCRIPT_SCALE: f64 = 0.62;
+
+/// A sub- or superscript none of the fonts has, drawn as its base
+/// character, smaller and moved off the baseline.
+fn scripted_glyph(family_id: i64, ch: char) -> Option<Glyph> {
+    let (base, script) = script_of(ch)?;
+    let g = glyph(family_id, base)?;
+    // In em, y pointing down.
+    let shift = match script {
+        Script::Sub => 0.14,
+        Script::Super => -0.36,
+    };
+    let place = Affine::translate((0.0, shift)) * Affine::scale(SCRIPT_SCALE);
+    Some(Glyph { path: Arc::new(place * (*g.path).clone()), advance: g.advance * SCRIPT_SCALE })
 }
 
 /// Advance of one character, in em.
@@ -349,6 +407,22 @@ mod tests {
         }
         assert_eq!(advance(5, '\u{10FFFF}'), MISSING_ADVANCE);
         assert_eq!(advance(5, '\t'), 8.0 * advance(5, ' '));
+    }
+
+    #[test]
+    fn sub_and_superscripts_always_draw() {
+        for id in [1, 2, 3, 5, 6, 7, 8, 9] {
+            for ch in "V₀ₓᵢ²ᶠ⁻".chars() {
+                assert!(glyph(id, ch).is_some_and(|g| !g.path.is_empty()), "family {id} lacks {ch}");
+            }
+        }
+        // A synthesized subscript is smaller than its base and sits lower.
+        let (sub, zero) = (glyph(5, '₀').unwrap(), glyph(5, '0').unwrap());
+        let (s, z) = (sub.path.bounding_box(), zero.path.bounding_box());
+        assert!(sub.advance < zero.advance && s.height() < z.height() && s.y1 > z.y1);
+        assert_eq!(to_script('1', Script::Sub), Some('₁'));
+        assert_eq!(to_script('f', Script::Sub), None);
+        assert_eq!(script_of('ᶠ'), Some(('f', Script::Super)));
     }
 
     #[test]
