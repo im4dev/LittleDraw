@@ -38,7 +38,7 @@ Motor de dibujo vectorial **nativo en Rust**, con un gestor de proyectos y pizar
 - **Renderizado GPU directo:** rasterización de curvas Bézier con compute shaders de `vello` (`0.12`) sobre `wgpu`, con caché de geometría por elemento.
 - **Trazos libres con presión real:** contorno de grosor variable (`perfect-freehand`) que guarda `pressures` y `simulatePressure` en `.excalidraw`. Usa la presión real del lápiz en Wayland (`winit 0.31`) y simula la presión por velocidad con ratón.
 - **Figuras, texto e imágenes:** rectángulos, rombos, elipses, líneas y flechas multipunto con *bindings*, texto multilínea con fuentes WOFF2 embebidas, etiquetas dentro de figuras, imágenes (`PNG`, `JPEG`, `GIF`, `WebP`, `BMP`), rellenos (`solid`, `hachure`, `cross-hatch`, `zigzag`), rugosidad, esquinas redondeadas, rotación, paleta de colores y orden de capas.
-- **Interoperabilidad `.excalidraw`:** abre, edita y guarda archivos preservando los campos desconocidos, copia y pega en formato Excalidraw, y exporta a SVG y PNG desde la línea de comandos.
+- **Interoperabilidad `.excalidraw`:** abre, edita y guarda archivos preservando los campos desconocidos, copia y pega en formato Excalidraw, y exporta a PNG o SVG desde la aplicación (`Ctrl+Shift+E` en el editor, o «Exportar imagen» en el menú de cada pizarra) y desde la línea de comandos.
 
 **Gestor de proyectos y pizarras**
 

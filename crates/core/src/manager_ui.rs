@@ -42,6 +42,7 @@ pub enum ManagerAction {
     MoveBoard { board_id: String, target_project_id: String },
     DeleteBoard(String),
     ExportBoard(String),
+    ExportBoardImage(String),
     ImportBoards(String),
     OpenWorkspaceFolder,
     ToggleTheme(Theme),
@@ -117,6 +118,7 @@ enum MenuChoice {
     Duplicate(String),
     Move(String),
     Export(String),
+    ExportImage(String),
     Delete(String),
 }
 
@@ -472,6 +474,7 @@ impl ManagerState {
                 None
             }
             MenuChoice::Export(id) => Some(ManagerAction::ExportBoard(id)),
+            MenuChoice::ExportImage(id) => Some(ManagerAction::ExportBoardImage(id)),
             MenuChoice::Delete(id) => {
                 if let Some(entry) = self.workspace.find_board(&id) {
                     self.dialog = Some(Dialog::Confirm {
@@ -807,6 +810,7 @@ impl ManagerState {
                 ("Duplicar", MenuChoice::Duplicate(board_id.clone()), false),
                 ("Mover a...", MenuChoice::Move(board_id.clone()), false),
                 ("Exportar", MenuChoice::Export(board_id.clone()), false),
+                ("Exportar imagen", MenuChoice::ExportImage(board_id.clone()), false),
                 ("Eliminar", MenuChoice::Delete(board_id), true),
             ];
             let mh = items.len() as f64 * item_h + 8.0;

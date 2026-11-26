@@ -158,6 +158,8 @@ pub enum Request {
     /// Let the user choose an image file, then call
     /// [`Editor::insert_image`] with it.
     PickImage,
+    /// Let the user save the drawing as a PNG or SVG image.
+    ExportImage,
 }
 
 /// Pointer shape the shell should show.
@@ -1802,6 +1804,8 @@ impl Editor {
                         self.live().filter(|e| e.container_id.is_none()).map(|e| e.id.clone()).collect();
                 }
                 'd' => self.duplicate_selected(),
+                // Excalidraw's shortcut for the image export dialog.
+                'e' if mods.shift => self.request = Some(Request::ExportImage),
                 'g' if mods.shift => self.ungroup_selected(),
                 'g' => self.group_selected(),
                 '0' => self.zoom_at(center, 1.0 / self.zoom),
@@ -3064,6 +3068,15 @@ mod tests {
         click(&mut ed, (600.0, 700.0));
         assert!(!ed.placing);
         assert_eq!(ed.document().elements[4].points, vec![[0.0, 0.0], [100.0, 0.0]]);
+    }
+
+    #[test]
+    fn ctrl_shift_e_asks_the_shell_to_export_an_image() {
+        let mut ed = editor();
+        ed.key_down(Key::Char('e'), CTRL);
+        assert!(ed.take_request().is_none());
+        ed.key_down(Key::Char('e'), Modifiers { shift: true, ..CTRL });
+        assert_eq!(ed.take_request(), Some(Request::ExportImage));
     }
 
     #[test]

@@ -36,6 +36,8 @@ use render::{encode, render_to_png_bytes, renderer_options, to_peniko, Images};
 use store::WorkspaceStore;
 
 const APP_NAME: &str = "LittleDraw";
+/// Pixels per logical pixel of an exported PNG.
+const EXPORT_SCALE: f64 = 2.0;
 const IMAGE_EXTENSIONS: [&str; 6] = ["png", "jpg", "jpeg", "gif", "webp", "bmp"];
 const DRAWING_EXTENSION: &str = "excalidraw";
 const AUTOSAVE_DEBOUNCE: Duration = Duration::from_millis(700);
@@ -169,6 +171,55 @@ impl App {
                 Ok(bytes) => self.insert_image(&bytes),
                 Err(err) => eprintln!("could not read {}: {err}", path.display()),
             }
+        }
+    }
+
+    /// Asks where to save `doc` as an image and writes it there: SVG when
+    /// the chosen name ends in `.svg`, PNG otherwise.
+    fn export_image(&mut self, doc: &Document, name: &str) -> Result<(), String> {
+        let picked = rfd::FileDialog::new()
+            .add_filter("Imagen PNG", &["png"])
+            .add_filter("Imagen SVG", &["svg"])
+            .set_file_name(format!("{name}.png"))
+            .save_file();
+        let Some(mut dest) = picked else {
+            return Ok(());
+        };
+        if dest.extension().is_none() {
+            dest.set_extension("png");
+        }
+        if dest.extension().is_some_and(|ext| ext.eq_ignore_ascii_case("svg")) {
+            return std::fs::write(&dest, export::to_svg(doc)).map_err(|e| e.to_string());
+        }
+        let Some((surface, _)) = &self.surface else {
+            return Err("no hay ventana".into());
+        };
+        let dev_id = surface.dev_id;
+        let device = &self.context.devices[dev_id].device;
+        let queue = &self.context.devices[dev_id].queue;
+        let Some(renderer) = self.renderers[dev_id].as_mut() else {
+            return Err("no hay renderizador".into());
+        };
+        // Twice the size for a sharp picture, unless that exceeds the GPU.
+        let (_, w, h) = export::to_frame(doc, 1.0);
+        let limit = f64::from(device.limits().max_texture_dimension_2d);
+        let scale = EXPORT_SCALE.min(limit / f64::from(w.max(h).max(1)));
+        let (frame, w, h) = export::to_frame(doc, scale);
+        let png = render_to_png_bytes(device, queue, renderer, &frame, w, h, &doc.files).map_err(|e| e.to_string())?;
+        std::fs::write(&dest, png).map_err(|e| e.to_string())
+    }
+
+    /// Exports the drawing open in the editor, named after its board or file.
+    fn export_open_drawing(&mut self) {
+        let name = match (&self.screen, &self.store) {
+            (Screen::Editor { board_id: Some(id) }, Some(store)) => {
+                store.workspace().find_board(id).map(|e| e.board.name.clone())
+            }
+            _ => self.path.file_stem().map(|s| s.to_string_lossy().into_owned()),
+        };
+        let doc = self.editor.document().clone();
+        if let Err(err) = self.export_image(&doc, name.as_deref().unwrap_or("dibujo")) {
+            eprintln!("could not export the image: {err}");
         }
     }
 
@@ -434,6 +485,20 @@ impl App {
                             mgr.notice = Some(format!("Error al exportar: {err}"));
                         }
                     }
+                }
+            }
+            ManagerAction::ExportBoardImage(board_id) => {
+                let Some(store) = &self.store else {
+                    return;
+                };
+                let name = store.workspace().find_board(&board_id).map(|e| e.board.name.clone());
+                let loaded = store.load_board(&board_id).and_then(|json| match json {
+                    Some(json) => Document::from_json(&json).map_err(|e| e.to_string()),
+                    None => Ok(Document::default()),
+                });
+                let result = loaded.and_then(|doc| self.export_image(&doc, name.as_deref().unwrap_or("pizarra")));
+                if let (Err(err), Some(mgr)) = (result, &mut self.manager) {
+                    mgr.notice = Some(format!("Error al exportar la imagen: {err}"));
                 }
             }
             ManagerAction::ImportBoards(project_id) => {
@@ -883,8 +948,10 @@ impl ApplicationHandler for App {
         }
 
         if matches!(self.screen, Screen::Editor { .. }) {
-            if self.editor.take_request() == Some(Request::PickImage) {
-                self.pick_image();
+            match self.editor.take_request() {
+                Some(Request::PickImage) => self.pick_image(),
+                Some(Request::ExportImage) => self.export_open_drawing(),
+                None => {}
             }
             if self.editor.is_modified() {
                 self.last_edit = Some(Instant::now());
