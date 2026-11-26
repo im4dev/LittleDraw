@@ -1,6 +1,8 @@
 //! Font files bundled with the engine: the WOFF2 files Excalidraw ships,
-//! unmodified. Families split into Unicode subsets list several files.
-//! Generated from the contents of `crates/core/fonts/`.
+//! unmodified, except Liberation Sans, which is upstream 2.1.5 (SIL OFL)
+//! instead of Excalidraw's GPL-licensed 1.05; both have the same advance
+//! widths. Families split into Unicode subsets list several files.
+//! Licenses: `crates/core/fonts/README.md`.
 
 /// (Excalidraw `fontFamily` ids, WOFF2 files) per bundled family.
 pub(crate) const FAMILIES: &[(&[i64], &[&[u8]])] = &[
