@@ -3,12 +3,12 @@
 //! opening a window:
 //!
 //! ```sh
-//! cargo run -p board-app --example ui_snapshot -- out.png
-//! cargo run -p board-app --example ui_snapshot -- out-dark.png dark
+//! cargo run -p littledraw --example ui_snapshot -- out.png
+//! cargo run -p littledraw --example ui_snapshot -- out-dark.png dark
 //! ```
 
-use board_core::kurbo::Point;
-use board_core::{Button, Editor, Key, Modifiers, Theme};
+use littledraw_core::kurbo::Point;
+use littledraw_core::{Button, Editor, Key, Modifiers, Theme};
 
 #[path = "../src/render.rs"]
 mod render;

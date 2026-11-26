@@ -62,6 +62,9 @@ pub enum FillStyle {
     CrossHatch,
     Solid,
     Zigzag,
+    /// Square cells centered on the shape, for Cartesian planes. LittleDraw
+    /// only; Excalidraw shows it as hachure.
+    Grid,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]

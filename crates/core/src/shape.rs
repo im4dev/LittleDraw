@@ -13,6 +13,8 @@ const DEFAULT_ADAPTIVE_RADIUS: f64 = 32.0;
 const PROPORTIONAL_RADIUS: f64 = 0.25;
 /// Direction of hachure lines, in screen degrees (leans like "/").
 const HACHURE_ANGLE: f64 = -49.0;
+/// Side of a cell of the grid fill, like Excalidraw's canvas grid.
+const GRID_CELL: f64 = 20.0;
 /// Shown in place of an image whose data is missing or unreadable.
 const IMAGE_PLACEHOLDER: Color = Color::rgba(222, 226, 230, 255);
 
@@ -339,6 +341,10 @@ pub fn element_ops(el: &Element) -> Vec<DrawOp> {
     if let Some(area) = fill_area.filter(|_| !bg.is_transparent()) {
         if el.fill_style == FillStyle::Solid {
             ops.push(DrawOp::fill(area, bg));
+        } else if el.fill_style == FillStyle::Grid {
+            let (cells, axes) = grid_lines(area.bounding_box(), GRID_CELL);
+            ops.push(DrawOp { path: cells, color: bg, style: Style::ClippedStroke { width: sw / 2.0, clip: area.clone() } });
+            ops.push(DrawOp { path: axes, color: bg, style: Style::ClippedStroke { width: sw, clip: area } });
         } else {
             let polygon = flatten(&area, 0.5);
             let gap = sw * 4.0;
@@ -348,7 +354,8 @@ pub fn element_ops(el: &Element) -> Vec<DrawOp> {
             if el.fill_style == FillStyle::CrossHatch {
                 rough.hachure(&polygon, gap, HACHURE_ANGLE + 90.0, false, &mut lines);
             }
-            ops.push(DrawOp::stroke(lines, bg, sw / 2.0));
+            // The sketchy lines wobble past their ends; keep them inside.
+            ops.push(DrawOp { path: lines, color: bg, style: Style::ClippedStroke { width: sw / 2.0, clip: area } });
         }
     }
     if !stroke.is_transparent() {
@@ -358,6 +365,27 @@ pub fn element_ops(el: &Element) -> Vec<DrawOp> {
         }
     }
     ops
+}
+
+/// Straight lines `cell` apart covering `bounds`, centered on it so the
+/// middle lines cross at its center: the cells, and the two axes apart.
+fn grid_lines(bounds: kurbo::Rect, cell: f64) -> (BezPath, BezPath) {
+    let center = bounds.center();
+    let (mut cells, mut axes) = (BezPath::new(), BezPath::new());
+    let reach = |half: f64| (half / cell).floor() as i64;
+    for i in -reach(bounds.width() / 2.0)..=reach(bounds.width() / 2.0) {
+        let x = center.x + i as f64 * cell;
+        let path = if i == 0 { &mut axes } else { &mut cells };
+        path.move_to((x, bounds.y0));
+        path.line_to((x, bounds.y1));
+    }
+    for i in -reach(bounds.height() / 2.0)..=reach(bounds.height() / 2.0) {
+        let y = center.y + i as f64 * cell;
+        let path = if i == 0 { &mut axes } else { &mut cells };
+        path.move_to((bounds.x0, y));
+        path.line_to((bounds.x1, y));
+    }
+    (cells, axes)
 }
 
 #[cfg(test)]
@@ -403,9 +431,23 @@ mod tests {
 
         e.fill_style = FillStyle::Hachure;
         let ops = element_ops(&e);
-        assert!(matches!(ops[0].style, Style::Stroke { width, .. } if width == 1.0));
-        let b = ops[0].path.bounding_box();
-        assert!(b.x0 > -6.0 && b.y0 > -6.0 && b.x1 < 206.0 && b.y1 < 106.0, "{b:?}");
+        let Style::ClippedStroke { width, clip } = &ops[0].style else { panic!("{:?}", ops[0].style) };
+        assert_eq!(*width, 1.0);
+        assert_eq!(clip.bounding_box(), outline(&e).bounding_box(), "lines are clipped to the shape");
+    }
+
+    #[test]
+    fn grid_fill_is_centered_on_the_shape() {
+        let e = Element { background_color: "#a5d8ff".into(), fill_style: FillStyle::Grid, ..el(Kind::Ellipse) };
+        let ops = element_ops(&e);
+        assert_eq!(ops.len(), 3, "cells, axes, outline");
+        assert!(matches!(ops[0].style, Style::ClippedStroke { .. }));
+        // The axes cross at the center of the 200×100 box.
+        let near = |p: Point, x: f64, y: f64| (p.x - x).abs() < 1e-6 && (p.y - y).abs() < 1e-6;
+        assert!(ops[1].path.segments().any(|s| near(s.start(), 100.0, 0.0) && near(s.end(), 100.0, 100.0)));
+        assert!(ops[1].path.segments().any(|s| near(s.start(), 0.0, 50.0) && near(s.end(), 200.0, 50.0)));
+        // 20px cells: 5 vertical lines each side of the axis (one on each edge), 2 horizontal.
+        assert_eq!(ops[0].path.segments().count(), 10 + 4);
     }
 
     #[test]

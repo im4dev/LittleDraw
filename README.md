@@ -2,91 +2,126 @@
 
 ![LittleDraw](docs/screenshots/littledraw.png)
 
-> **Motor basado en Excalidraw:** Este proyecto es un motor de dibujo vectorial nativo en **Rust** basado en [Excalidraw](https://github.com/excalidraw/excalidraw) (MIT). Reproduce su diseño, estética *hand-drawn*, comportamiento de herramientas y compatibilidad con el formato `.excalidraw`, portando algoritmos de [rough.js](https://github.com/rough-stuff/rough) y [perfect-freehand](https://github.com/steveruizok/perfect-freehand) para ejecutarse directamente en GPU sin navegador, Electron ni Chromium.
+Pizarra vectorial **nativa en Rust**, compatible con archivos `.excalidraw`, con un gestor de proyectos y pizarras. Dibuja directamente en la GPU, **sin Chromium ni Electron**.
 
-## Capturas
+Reproduce el estilo dibujado a mano, las herramientas y el formato de [Excalidraw](https://github.com/excalidraw/excalidraw), y añade herramientas para dar clase: plano cartesiano, relleno en cuadrícula, subíndices y superíndices.
 
-> Las capturas del editor y del gestor usan **datos de ejemplo inventados**.
-
-### Editor
-
-| Tema claro | Tema oscuro |
+| Gestor de proyectos | Editor |
 |---|---|
-| ![Editor en tema claro, con una figura seleccionada y el panel de estilos](docs/screenshots/editor-light.png) | ![Editor en tema oscuro, con una figura seleccionada y el panel de estilos](docs/screenshots/editor-dark.png) |
+| ![Gestor de proyectos en tema claro](docs/screenshots/manager-light.png) | ![Editor en tema claro con una figura seleccionada y el panel de estilos](docs/screenshots/editor-light.png) |
+| ![Gestor de proyectos en tema oscuro](docs/screenshots/manager-dark.png) | ![Editor en tema oscuro con una figura seleccionada y el panel de estilos](docs/screenshots/editor-dark.png) |
 
-### Editor y herramientas
+![Plano cartesiano con la recta y = x, un rectángulo con relleno en cuadrícula, una elipse con hachure y fórmulas con subíndices y superíndices](docs/screenshots/math-tools.png)
+
+<details>
+<summary>Más capturas</summary>
+
+**Herramientas, texto y figuras**
 ![Interfaz del editor con barra de herramientas, panel de estilos, figuras, flecha anclada y edición de texto](docs/screenshots/editor-ui.png)
 
-### Trazos con presión de lápiz (Wayland)
-![Trazos libres con presión real de tableta gráfica en Wayland](docs/screenshots/pen-pressure.png)
+**Trazos con presión de lápiz (Wayland)**
+![Trazos libres con presión real de tableta gráfica](docs/screenshots/pen-pressure.png)
 
-### Renderizado de `samples/demo.excalidraw`
-![Exportación a PNG de samples/demo.excalidraw mostrando rellenos hachure, cross-hatch, solid, trazos punteados, flechas curvas y rotación](docs/screenshots/demo-render.png)
+**Exportación de `samples/demo.excalidraw`**
+![Rellenos hachure, cross-hatch y solid, trazos punteados, flechas curvas y rotación](docs/screenshots/demo-render.png)
 
-### Gestor de proyectos y pizarras
+</details>
 
-El gestor (proyectos con color, recientes, búsqueda y miniaturas) vive en la rama `manager`; este código no lo incluye.
+> Las capturas usan datos de ejemplo inventados.
 
-| Tema claro | Tema oscuro |
-|---|---|
-| ![Gestor de proyectos en tema claro](docs/screenshots/manager-light.png) | ![Gestor de proyectos en tema oscuro](docs/screenshots/manager-dark.png) |
+## Características
 
-## Arquitectura
+**Editor**
+- Rectángulos, rombos, elipses, líneas y flechas multipunto que se anclan a las figuras, trazo libre, texto e imágenes (PNG, JPEG, GIF, WebP, BMP).
+- Texto multilínea con las fuentes de Excalidraw, etiquetas dentro de figuras y selección dentro del texto que se está editando.
+- Rellenos `solid`, `hachure`, `cross-hatch`, `zigzag` y `grid`; las líneas del relleno no se salen de la figura.
+- Grosor, estilo y rugosidad del trazo, esquinas redondeadas, opacidad, rotación, grupos, capas, deshacer y rehacer.
+- Presión real del lápiz en Wayland; con ratón, la presión se simula según la velocidad.
+- Tema claro y oscuro, compartido con el gestor.
 
-```text
-.
-├── Cargo.toml
-├── crates/
-│   ├── core/                # board-core: núcleo puro sin ventana, GPU ni reloj
-│   │   ├── src/
-│   │   │   ├── element.rs   # Modelo de escena y serialización JSON .excalidraw
-│   │   │   ├── rough.rs     # Trazos y rellenos hand-drawn deterministas (rough.js)
-│   │   │   ├── freehand.rs  # Contornos de grosor variable (perfect-freehand)
-│   │   │   ├── shape.rs     # Geometría de elementos → operaciones de dibujo
-│   │   │   ├── text.rs      # Fuentes WOFF2, medición, wrapping y glifos
-│   │   │   ├── bound.rs     # Texto ligado dentro de contenedores
-│   │   │   ├── binding.rs   # Flechas ancladas a figuras
-│   │   │   ├── hit.rs       # Hit-testing
-│   │   │   ├── editor.rs    # Herramientas, selección, edición, undo/redo, Frame
-│   │   │   ├── ui.rs        # Barra de herramientas y panel de estilos
-│   │   │   └── export.rs    # Exportación headless a SVG y display list para PNG
-│   │   └── fonts/           # Fuentes WOFF2 embebidas en el binario
-│   └── app/                 # board-app: shell de escritorio (winit + vello/wgpu)
-│       ├── src/
-│       │   ├── main.rs      # Ventana, eventos, portapapeles, diálogos y CLI
-│       │   └── render.rs    # Rasterización GPU con vello y exportación PNG
-│       └── examples/
-│           └── ui_snapshot.rs
-└── samples/
-    └── demo.excalidraw
-```
+**Para clases**
+- **Plano cartesiano** (tecla `C`): al arrastrar se dibujan la cuadrícula, los ejes con flechas, los números y las etiquetas `x` e `y`. Con `Shift` solo se dibuja el primer cuadrante, y un clic crea un plano de 10 × 10. Las líneas y flechas que se dibujan encima se ajustan a las intersecciones, aunque el plano se mueva o se escale (`Shift` desactiva el ajuste).
+- **Relleno en cuadrícula:** celdas de 20 px centradas en la figura, con las líneas centrales más gruesas como ejes.
+- **Subíndices y superíndices** mientras se escribe: `Ctrl+=` y `Ctrl++`, como en Word. Se guardan como caracteres Unicode (H₂O, x²), así que el archivo sigue siendo texto plano.
 
-## Características principales
+**Gestor de proyectos y pizarras**
+- Proyectos con color, pizarras recientes, búsqueda y miniaturas.
+- Crear, renombrar, duplicar, mover y eliminar pizarras y proyectos.
+- Importar y exportar `.excalidraw`, y exportar imágenes desde el menú de cada pizarra.
+- Guardado automático 700 ms después de la última edición.
 
-- **Renderizado GPU directo:** rasterización de curvas Bézier mediante compute shaders con `vello` (`0.12`) sobre `wgpu`, con caché de geometría por elemento.
-- **Trazos libres con presión real:** contorno de grosor variable (`perfect-freehand`) que registra `pressures` y `simulatePressure` en `.excalidraw`, usando la presión real del lápiz en Wayland (`winit 0.31`) y simulación por velocidad con ratón.
-- **Figuras, texto e imágenes:** rectángulos, rombos, elipses, líneas y flechas multipunto con *bindings*, texto multilínea con fuentes WOFF2 embebidas, etiquetas dentro de figuras, imágenes (`PNG`, `JPEG`, `GIF`, `WebP`, `BMP`), rellenos (`solid`, `hachure`, `cross-hatch`, `zigzag`), rugosidad, esquinas redondeadas, rotación, paleta de colores y orden de capas.
-- **Modo oscuro:** botón en la esquina superior derecha o `Alt+Shift+D`. Como en Excalidraw, solo cambia cómo se muestran los colores (el archivo no se modifica) y las imágenes conservan los suyos; la preferencia se recuerda en `~/.config/board/theme` y se puede forzar con `--dark` o `--light`.
-- **Interoperabilidad `.excalidraw`:** abre, edita y guarda archivos `.excalidraw` preservando campos desconocidos, copia/pega en formato Excalidraw y exporta a SVG y PNG desde línea de comandos.
+**Compatibilidad con Excalidraw**
+- Abre y guarda `.excalidraw` y conserva los campos que no usa.
+- Copia y pega en el formato del portapapeles de Excalidraw.
+- El plano cartesiano y las fórmulas son elementos normales de Excalidraw, así que se ven igual allí. El relleno `grid` es propio de LittleDraw: Excalidraw lo muestra como hachure.
+- Exporta a PNG y SVG desde la aplicación (`Ctrl+Shift+E`) o desde la línea de comandos.
 
-## Compilar y ejecutar
+## Atajos de teclado
+
+| Herramienta | Tecla | | Acción | Atajo |
+|---|---|---|---|---|
+| Selección | `V` o `1` | | Guardar | `Ctrl+S` |
+| Rectángulo | `R` o `2` | | Abrir / Guardar como (archivo suelto) | `Ctrl+O` / `Ctrl+Shift+S` |
+| Rombo | `D` o `3` | | Volver al gestor | `Ctrl+B` |
+| Elipse | `O` o `4` | | Deshacer / Rehacer | `Ctrl+Z` / `Ctrl+Shift+Z` o `Ctrl+Y` |
+| Flecha | `A` o `5` | | Copiar / Cortar / Pegar | `Ctrl+C` / `Ctrl+X` / `Ctrl+V` |
+| Línea | `L` o `6` | | Duplicar | `Ctrl+D` |
+| Trazo libre | `P` o `7` | | Agrupar / Desagrupar | `Ctrl+G` / `Ctrl+Shift+G` |
+| Texto | `T` o `8` | | Zoom / Restablecer zoom | `Ctrl++` `Ctrl+-` / `Ctrl+0` |
+| Imagen | `9` | | Exportar imagen | `Ctrl+Shift+E` |
+| Plano cartesiano | `C` | | Tema claro u oscuro | `Alt+Shift+D` |
+| Mano (desplazar) | `H` o `Espacio` | | Subíndice / Superíndice (al escribir) | `Ctrl+=` / `Ctrl++` |
+
+## Instalación
+
+Por ahora LittleDraw se compila desde el código fuente y está pensado para **Linux** (Wayland o X11). Hace falta [Rust](https://rustup.rs) y una GPU con Vulkan.
 
 ```bash
-# Ejecutar la aplicación (lienzo vacío)
-cargo run --release -p board-app
+git clone https://github.com/im4dev/LittleDraw
+cd LittleDraw
+cargo build --release
+install -Dm755 target/release/littledraw ~/.local/bin/littledraw
 
-# Abrir un archivo .excalidraw
-cargo run --release -p board-app -- samples/demo.excalidraw
-
-# Exportación headless a SVG / PNG
-cargo run --release -p board-app -- samples/demo.excalidraw --svg salida.svg --png salida.png
-
-# Abrir en modo oscuro (o --light para forzar el claro)
-cargo run --release -p board-app -- samples/demo.excalidraw --dark
-
-# Generar captura de la interfaz sin abrir ventana (añade "dark" para el modo oscuro)
-cargo run -p board-app --example ui_snapshot -- docs/screenshots/editor-ui.png
-
-# Ejecutar tests del núcleo
-cargo test -p board-core
+# Opcional: entrada en el menú de aplicaciones
+install -Dm644 resources/littledraw.desktop ~/.local/share/applications/littledraw.desktop
+install -Dm644 resources/icon.png ~/.local/share/icons/hicolor/512x512/apps/littledraw.png
 ```
+
+## Uso
+
+```bash
+littledraw                          # gestor de proyectos
+littledraw dibujo.excalidraw        # abrir un archivo en el editor
+littledraw --workspace ~/pizarras   # usar otra carpeta de datos
+littledraw --dark                   # forzar el tema en esta ejecución (o --light)
+
+# Exportar sin abrir ventana
+littledraw dibujo.excalidraw --svg dibujo.svg --png dibujo.png --scale 2
+```
+
+### Dónde se guardan los datos
+
+| Qué | Dónde | Se cambia con |
+|---|---|---|
+| Proyectos y pizarras | `~/.local/share/littledraw/workspace` (`$XDG_DATA_HOME`) | `--workspace DIR` o `LITTLEDRAW_WORKSPACE` |
+| Tema elegido | `~/.config/littledraw/theme` (`$XDG_CONFIG_HOME`) | el botón de tema o `Alt+Shift+D` |
+
+La carpeta de datos contiene `workspace.json` (el índice), `boards/` (una escena `.excalidraw` por pizarra) y `thumbnails/` (las miniaturas). Si existe una carpeta de una versión anterior en `~/.config/Boards/workspace`, se mueve a la nueva ubicación la primera vez y la antigua queda como un enlace a la nueva.
+
+## Estado
+
+- **Plataformas:** Linux. Windows, una demo web y un instalador con actualizaciones automáticas son los próximos pasos.
+- **Datos locales:** no hay cuentas ni sincronización en la nube.
+- **Cambios:** ver [`CHANGELOG.md`](CHANGELOG.md).
+
+## Desarrollo
+
+La arquitectura, las pruebas y cómo generar las capturas están en [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md).
+
+## Licencia y créditos
+
+LittleDraw tiene licencia [MIT](LICENSE).
+
+Se basa en [Excalidraw](https://github.com/excalidraw/excalidraw) (MIT), del que reproduce el diseño, el comportamiento y el formato, y porta algoritmos de [rough.js](https://github.com/rough-stuff/rough) (MIT) y [perfect-freehand](https://github.com/steveruizok/perfect-freehand) (MIT). Las fuentes incluidas tienen licencia SIL OFL 1.1 o MIT. Los avisos completos están en [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).
+
+LittleDraw es un proyecto independiente, sin relación con el equipo de Excalidraw.

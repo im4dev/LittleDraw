@@ -6,11 +6,11 @@ use std::error::Error;
 use std::fs::File;
 use std::io::BufWriter;
 use std::path::Path;
-use std::sync::Arc;
+use std::sync::{Arc, LazyLock};
 
 use base64::Engine;
-use board_core::kurbo::{Affine, Rect, Shape};
-use board_core::{Color, Frame, Style};
+use littledraw_core::kurbo::{Affine, Rect, Shape};
+use littledraw_core::{Color, Frame, Style};
 use serde_json::Value;
 use vello::kurbo::Stroke;
 use vello::peniko::{self, Blob, Fill, ImageAlphaType, ImageBrushRef, ImageData, ImageFormat, Mix};
@@ -38,6 +38,27 @@ impl Images {
             .or_insert_with(|| decode_data_url(files[file_id]["dataURL"].as_str()?))
             .as_ref()
     }
+
+    pub fn insert_png(&mut self, key: String, bytes: &[u8]) {
+        if let Ok(img) = image::load_from_memory(bytes) {
+            let pixels = img.into_rgba8();
+            let (width, height) = pixels.dimensions();
+            self.decoded.insert(
+                key,
+                Some(ImageData {
+                    data: Blob::new(Arc::new(pixels.into_raw())),
+                    format: ImageFormat::Rgba8,
+                    alpha_type: ImageAlphaType::Alpha,
+                    width,
+                    height,
+                }),
+            );
+        }
+    }
+
+    pub fn remove(&mut self, key: &str) {
+        self.decoded.remove(key);
+    }
 }
 
 /// Decodes a `data:<mime>;base64,...` URL holding a PNG, JPEG, GIF, WebP
@@ -56,11 +77,26 @@ fn decode_data_url(data_url: &str) -> Option<ImageData> {
     })
 }
 
+/// A transparent pixel drawn into every scene. A scene without any image
+/// makes vello replace its image atlas with an empty 1×1 one while still
+/// believing the old bitmaps are uploaded, so they would come back invisible
+/// (e.g. deleting the only image and undoing, or a thumbnail of a board
+/// without images rendered between window frames).
+static KEEP_ATLAS: LazyLock<ImageData> = LazyLock::new(|| ImageData {
+    data: Blob::new(Arc::new(vec![0u8; 4])),
+    format: ImageFormat::Rgba8,
+    alpha_type: ImageAlphaType::Alpha,
+    width: 1,
+    height: 1,
+});
+
 /// Encodes the core's display list into a vello scene. `scale` is the
 /// window's HiDPI factor; the core works in logical pixels. `files` is the
 /// document's file map, where image ops find their bitmaps.
 pub fn encode(scene: &mut Scene, frame: &Frame, scale: f64, viewport: Rect, images: &mut Images, files: &Value) {
     scene.reset();
+    let pixel: ImageBrushRef<'_> = (&*KEEP_ATLAS).into();
+    scene.fill(Fill::NonZero, Affine::IDENTITY, pixel, None, &Rect::new(0.0, 0.0, 1.0, 1.0));
     let base = Affine::scale(scale);
     for item in &frame.items {
         let transform = base * item.transform;
@@ -79,6 +115,11 @@ pub fn encode(scene: &mut Scene, frame: &Frame, scale: f64, viewport: Rect, imag
                         stroke = stroke.with_dashes(0.0, dash);
                     }
                     scene.stroke(&stroke, transform, color, None, &op.path);
+                }
+                Style::ClippedStroke { width, clip } => {
+                    scene.push_clip_layer(Fill::NonZero, transform, clip);
+                    scene.stroke(&Stroke::new(*width), transform, color, None, &op.path);
+                    scene.pop_layer();
                 }
                 Style::Image { file_id, crop, flip_x, flip_y } => {
                     let Some(image) = images.get(file_id, files) else {
@@ -183,4 +224,184 @@ pub fn write_png(frame: &Frame, width: u32, height: u32, files: &Value, out: &Pa
     }
     writer.finish()?;
     Ok(())
+}
+
+/// Renders `frame` into PNG bytes using an existing GPU device and renderer.
+pub fn render_to_png_bytes(
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
+    renderer: &mut Renderer,
+    frame: &Frame,
+    width: u32,
+    height: u32,
+    files: &Value,
+) -> Result<Vec<u8>, Box<dyn Error>> {
+    let limit = device.limits().max_texture_dimension_2d;
+    if width == 0 || height == 0 || width > limit || height > limit {
+        return Err(format!("invalid thumbnail dimensions {width}×{height}").into());
+    }
+    let mut scene = Scene::new();
+    let viewport = Rect::new(0.0, 0.0, f64::from(width), f64::from(height));
+    encode(&mut scene, frame, 1.0, viewport, &mut Images::default(), files);
+    let size = wgpu::Extent3d { width, height, depth_or_array_layers: 1 };
+    let texture = device.create_texture(&wgpu::TextureDescriptor {
+        label: None,
+        size,
+        mip_level_count: 1,
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D2,
+        format: wgpu::TextureFormat::Rgba8Unorm,
+        usage: wgpu::TextureUsages::STORAGE_BINDING | wgpu::TextureUsages::COPY_SRC,
+        view_formats: &[],
+    });
+    let params = RenderParams {
+        base_color: to_peniko(frame.background),
+        width,
+        height,
+        antialiasing_method: AaConfig::Area,
+    };
+    renderer.render_to_texture(
+        device,
+        queue,
+        &scene,
+        &texture.create_view(&wgpu::TextureViewDescriptor::default()),
+        &params,
+    )?;
+
+    let row = width * 4;
+    let padded = row.next_multiple_of(wgpu::COPY_BYTES_PER_ROW_ALIGNMENT);
+    let buffer = device.create_buffer(&wgpu::BufferDescriptor {
+        label: None,
+        size: u64::from(padded) * u64::from(height),
+        usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
+        mapped_at_creation: false,
+    });
+    let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+    encoder.copy_texture_to_buffer(
+        texture.as_image_copy(),
+        wgpu::TexelCopyBufferInfo {
+            buffer: &buffer,
+            layout: wgpu::TexelCopyBufferLayout { offset: 0, bytes_per_row: Some(padded), rows_per_image: None },
+        },
+        size,
+    );
+    queue.submit([encoder.finish()]);
+    buffer.map_async(wgpu::MapMode::Read, .., |result| result.expect("failed to read back thumbnail"));
+    device.poll(wgpu::PollType::wait_indefinitely())?;
+    let data = buffer.get_mapped_range(..)?;
+
+    let mut tight = Vec::with_capacity((row * height) as usize);
+    for line in data.chunks(padded as usize) {
+        tight.extend_from_slice(&line[..row as usize]);
+    }
+    let mut out = Vec::new();
+    let mut png = png::Encoder::new(&mut out, width, height);
+    png.set_color(png::ColorType::Rgba);
+    let mut writer = png.write_header()?;
+    writer.write_image_data(&tight)?;
+    writer.finish()?;
+    Ok(out)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use littledraw_core::kurbo::BezPath;
+    use littledraw_core::{DrawOp, Item};
+    use std::rc::Rc;
+
+    const SIZE: u32 = 16;
+
+    /// The center pixel of `frame` drawn by a long-lived renderer, as the
+    /// window does.
+    fn center_pixel(
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        renderer: &mut Renderer,
+        images: &mut Images,
+        frame: &Frame,
+        files: &Value,
+    ) -> [u8; 4] {
+        let mut scene = Scene::new();
+        let viewport = Rect::new(0.0, 0.0, f64::from(SIZE), f64::from(SIZE));
+        encode(&mut scene, frame, 1.0, viewport, images, files);
+        let size = wgpu::Extent3d { width: SIZE, height: SIZE, depth_or_array_layers: 1 };
+        let texture = device.create_texture(&wgpu::TextureDescriptor {
+            label: None,
+            size,
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Rgba8Unorm,
+            usage: wgpu::TextureUsages::STORAGE_BINDING | wgpu::TextureUsages::COPY_SRC,
+            view_formats: &[],
+        });
+        let params = RenderParams {
+            base_color: to_peniko(frame.background),
+            width: SIZE,
+            height: SIZE,
+            antialiasing_method: AaConfig::Area,
+        };
+        let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+        renderer.render_to_texture(device, queue, &scene, &view, &params).unwrap();
+        let padded = (SIZE * 4).next_multiple_of(wgpu::COPY_BYTES_PER_ROW_ALIGNMENT);
+        let buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: None,
+            size: u64::from(padded * SIZE),
+            usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+        encoder.copy_texture_to_buffer(
+            texture.as_image_copy(),
+            wgpu::TexelCopyBufferInfo {
+                buffer: &buffer,
+                layout: wgpu::TexelCopyBufferLayout { offset: 0, bytes_per_row: Some(padded), rows_per_image: None },
+            },
+            size,
+        );
+        queue.submit([encoder.finish()]);
+        buffer.map_async(wgpu::MapMode::Read, .., |result| result.unwrap());
+        device.poll(wgpu::PollType::wait_indefinitely()).unwrap();
+        let data = buffer.get_mapped_range(..).unwrap();
+        let at = (SIZE / 2 * padded + SIZE / 2 * 4) as usize;
+        data[at..at + 4].try_into().unwrap()
+    }
+
+    #[test]
+    fn images_survive_a_frame_without_images() {
+        let mut context = RenderContext::new();
+        let Some(dev_id) = pollster::block_on(context.device(None)) else {
+            eprintln!("skipped: no GPU");
+            return;
+        };
+        let (device, queue) = (&context.devices[dev_id].device, &context.devices[dev_id].queue);
+        let mut renderer = Renderer::new(device, renderer_options()).unwrap();
+        let mut images = Images::default();
+
+        let mut png = Vec::new();
+        image::RgbaImage::from_pixel(4, 4, image::Rgba([255, 0, 0, 255]))
+            .write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png)
+            .unwrap();
+        let data_url = format!("data:image/png;base64,{}", base64::engine::general_purpose::STANDARD.encode(&png));
+        let files = serde_json::json!({ "red": { "dataURL": data_url } });
+
+        let square = Rect::new(0.0, 0.0, f64::from(SIZE), f64::from(SIZE));
+        let picture = DrawOp {
+            path: BezPath::from_vec(square.path_elements(0.1).collect()),
+            color: Color::rgba(222, 226, 230, 255),
+            style: Style::Image { file_id: "red".into(), crop: None, flip_x: false, flip_y: false },
+        };
+        let with_image = Frame {
+            background: Color::WHITE,
+            items: vec![Item { transform: Affine::IDENTITY, opacity: 1.0, ops: Rc::new(vec![picture]) }],
+        };
+        let empty = Frame { background: Color::WHITE, items: Vec::new() };
+
+        let mut draw = |frame: &Frame| center_pixel(device, queue, &mut renderer, &mut images, frame, &files);
+        assert_eq!(draw(&with_image), [255, 0, 0, 255]);
+        assert_eq!(draw(&empty), [255, 255, 255, 255]);
+        // Deleting the only image and undoing, for example.
+        assert_eq!(draw(&with_image), [255, 0, 0, 255], "the image came back invisible");
+    }
 }
