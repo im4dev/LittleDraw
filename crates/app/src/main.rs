@@ -1,5 +1,5 @@
 //! Desktop shell: a winit window painted with vello (wgpu). All drawing
-//! logic lives in `board-core`; this file translates input events, manages
+//! logic lives in `littledraw-core`; this file translates input events, manages
 //! local workspace persistence, and turns display lists into GPU draw calls.
 
 use std::error::Error;
@@ -9,9 +9,9 @@ use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use base64::Engine;
-use board_core::kurbo::{Affine, BezPath, Point, Rect, RoundedRect, Shape, Size, Vec2};
-use board_core::manager_ui::{ManagerAction, ManagerState, Selection};
-use board_core::{
+use littledraw_core::kurbo::{Affine, BezPath, Point, Rect, RoundedRect, Shape, Size, Vec2};
+use littledraw_core::manager_ui::{ManagerAction, ManagerState, Selection};
+use littledraw_core::{
     export, Button, Color, Cursor, Document, DrawOp, Editor, Frame, Item, Key, Modifiers, Request, Theme,
 };
 use serde_json::Value;
@@ -36,6 +36,8 @@ use render::{encode, render_to_png_bytes, renderer_options, to_peniko, Images};
 use store::WorkspaceStore;
 
 const APP_NAME: &str = "LittleDraw";
+/// Desktop entry id (`littledraw.desktop`), also used as the Wayland app id.
+const APP_ID: &str = "littledraw";
 /// Pixels per logical pixel of an exported PNG.
 const EXPORT_SCALE: f64 = 2.0;
 const IMAGE_EXTENSIONS: [&str; 6] = ["png", "jpg", "jpeg", "gif", "webp", "bmp"];
@@ -683,7 +685,7 @@ fn append_back_button(frame: &mut Frame, cursor: Point, theme: Theme) {
         DrawOp::stroke(rr, border, 1.0),
     ];
     let mut text_path = BezPath::new();
-    board_core::text::append_line("<- Proyectos", 2, 13.0, Point::new(26.0, 33.5), &mut text_path);
+    littledraw_core::text::append_line("<- Proyectos", 2, 13.0, Point::new(26.0, 33.5), &mut text_path);
     if !text_path.is_empty() {
         ops.push(DrawOp::fill(text_path, text));
     }
@@ -741,6 +743,12 @@ impl ApplicationHandler for App {
         let attributes = WindowAttributes::default()
             .with_surface_size(LogicalSize::new(1320, 840))
             .with_window_icon(load_app_icon());
+        // The Wayland app id must match `littledraw.desktop` so launchers
+        // and taskbars group the window with its icon.
+        #[cfg(target_os = "linux")]
+        let attributes = attributes.with_platform_attributes(Box::new(
+            winit::platform::wayland::WindowAttributesWayland::default().with_name(APP_ID, APP_ID),
+        ));
         let window: Arc<dyn Window> =
             Arc::from(event_loop.create_window(attributes).expect("failed to create window"));
         let size = window.surface_size();
@@ -992,18 +1000,24 @@ fn untitled_path() -> PathBuf {
         .expect("some untitled name is free")
 }
 
-/// Where the chosen theme is remembered between runs:
-/// `$XDG_CONFIG_HOME/board/theme` (or `~/.config/board/theme`).
-fn theme_file() -> Option<PathBuf> {
-    let config = std::env::var_os("XDG_CONFIG_HOME")
+fn config_dir() -> Option<PathBuf> {
+    std::env::var_os("XDG_CONFIG_HOME")
         .map(PathBuf::from)
         .filter(|dir| dir.is_absolute())
-        .or_else(|| Some(PathBuf::from(std::env::var_os("HOME")?).join(".config")))?;
-    Some(config.join("board").join("theme"))
+        .or_else(|| Some(PathBuf::from(std::env::var_os("HOME")?).join(".config")))
+}
+
+/// Where the chosen theme is remembered between runs:
+/// `$XDG_CONFIG_HOME/littledraw/theme` (or `~/.config/littledraw/theme`).
+fn theme_file() -> Option<PathBuf> {
+    Some(config_dir()?.join("littledraw").join("theme"))
 }
 
 fn remembered_theme() -> Option<Theme> {
-    match std::fs::read_to_string(theme_file()?).ok()?.trim() {
+    // Earlier versions kept the choice in `board/theme`.
+    let legacy = || std::fs::read_to_string(config_dir()?.join("board").join("theme")).ok();
+    let saved = std::fs::read_to_string(theme_file()?).ok().or_else(legacy)?;
+    match saved.trim() {
         "dark" => Some(Theme::Dark),
         "light" => Some(Theme::Light),
         _ => None,
@@ -1063,7 +1077,7 @@ fn main() {
             eprintln!("error: {err}");
         }
         eprintln!(
-            "usage: board-app [FILE.excalidraw] [--workspace DIR] [--dark | --light] [--svg OUT.svg] [--png OUT.png [--scale N]]"
+            "usage: littledraw [FILE.excalidraw] [--workspace DIR] [--dark | --light] [--svg OUT.svg] [--png OUT.png [--scale N]]"
         );
         std::process::exit(2);
     });

@@ -1,7 +1,10 @@
 [package]
-name = "board-core"
+name = "littledraw-core"
+description = "LittleDraw drawing engine: .excalidraw scene model, hand-drawn geometry, editor and UI, without window or GPU"
 edition.workspace = true
 version.workspace = true
+license.workspace = true
+repository.workspace = true
 
 [dependencies]
 kurbo = "0.13.1"

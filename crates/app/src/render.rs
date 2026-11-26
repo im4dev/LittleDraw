@@ -9,8 +9,8 @@ use std::path::Path;
 use std::sync::{Arc, LazyLock};
 
 use base64::Engine;
-use board_core::kurbo::{Affine, Rect, Shape};
-use board_core::{Color, Frame, Style};
+use littledraw_core::kurbo::{Affine, Rect, Shape};
+use littledraw_core::{Color, Frame, Style};
 use serde_json::Value;
 use vello::kurbo::Stroke;
 use vello::peniko::{self, Blob, Fill, ImageAlphaType, ImageBrushRef, ImageData, ImageFormat, Mix};
@@ -306,8 +306,8 @@ pub fn render_to_png_bytes(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use board_core::kurbo::BezPath;
-    use board_core::{DrawOp, Item};
+    use littledraw_core::kurbo::BezPath;
+    use littledraw_core::{DrawOp, Item};
     use std::rc::Rc;
 
     const SIZE: u32 = 16;

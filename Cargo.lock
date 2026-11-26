@@ -167,33 +167,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "board-app"
-version = "0.1.0"
-dependencies = [
- "arboard",
- "base64",
- "board-core",
- "image",
- "png",
- "pollster",
- "rfd",
- "serde_json",
- "vello",
- "winit",
-]
-
-[[package]]
-name = "board-core"
-version = "0.1.0"
-dependencies = [
- "kurbo",
- "serde",
- "serde_json",
- "skrifa",
- "wuff",
-]
-
-[[package]]
 name = "borsh"
 version = "1.8.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -891,6 +864,33 @@ name = "litrs"
 version = "1.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4744e383959f0db86ede514b809b1c53251889093803c05267acc7d4e7030d70"
+
+[[package]]
+name = "littledraw"
+version = "0.1.0"
+dependencies = [
+ "arboard",
+ "base64",
+ "image",
+ "littledraw-core",
+ "png",
+ "pollster",
+ "rfd",
+ "serde_json",
+ "vello",
+ "winit",
+]
+
+[[package]]
+name = "littledraw-core"
+version = "0.1.0"
+dependencies = [
+ "kurbo",
+ "serde",
+ "serde_json",
+ "skrifa",
+ "wuff",
+]
 
 [[package]]
 name = "lock_api"

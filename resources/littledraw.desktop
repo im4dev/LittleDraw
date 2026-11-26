@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=LittleDraw
+GenericName=Pizarra
+Comment=Pizarras y proyectos compatibles con Excalidraw, nativo y sin navegador
+Exec=littledraw %F
+Icon=littledraw
+Terminal=false
+Categories=Graphics;2DGraphics;
+Keywords=whiteboard;pizarra;dibujo;excalidraw;diagrama;
+MimeType=application/vnd.excalidraw+json;
+StartupWMClass=littledraw

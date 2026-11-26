@@ -1,4 +1,4 @@
-//! Disk persistence for `Boards` workspaces (`workspace.json`, `boards/*.excalidraw`,
+//! Disk persistence for LittleDraw workspaces (`workspace.json`, `boards/*.excalidraw`,
 //! `thumbnails/*.png`).
 
 use std::fs;
@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use board_core::workspace::{clean_name, is_valid_hex_color, Board, Project, Workspace, PROJECT_COLORS};
+use littledraw_core::workspace::{clean_name, is_valid_hex_color, Board, Project, Workspace, PROJECT_COLORS};
 
 static ID_SEQ: AtomicU64 = AtomicU64::new(1);
 
@@ -30,27 +30,56 @@ fn write_file_atomic(path: &Path, bytes: &[u8]) -> Result<(), String> {
     })
 }
 
+/// Moves the workspace at `legacy` to `root` unless `root` already exists,
+/// and leaves a symlink at `legacy` so an older build still finds the data.
+/// Returns the folder to use: `legacy` itself if it could not be moved.
+fn adopt_legacy_workspace(legacy: &Path, root: PathBuf) -> PathBuf {
+    if root.exists() || !legacy.is_dir() {
+        return root;
+    }
+    let moved = root
+        .parent()
+        .map_or(Ok(()), fs::create_dir_all)
+        .and_then(|()| fs::rename(legacy, &root));
+    if let Err(err) = moved {
+        eprintln!("could not move the workspace from {} to {}: {err}", legacy.display(), root.display());
+        return legacy.to_path_buf();
+    }
+    #[cfg(unix)]
+    if let Err(err) = std::os::unix::fs::symlink(&root, legacy) {
+        eprintln!("could not link {} to the moved workspace: {err}", legacy.display());
+    }
+    root
+}
+
 pub struct WorkspaceStore {
     root: PathBuf,
     workspace: Workspace,
 }
 
 impl WorkspaceStore {
+    /// `$LITTLEDRAW_WORKSPACE`, else `$XDG_DATA_HOME/littledraw/workspace`
+    /// (`~/.local/share/littledraw/workspace`). A workspace that earlier
+    /// versions kept in `~/.config/Boards/workspace` is moved there first.
     pub fn default_root() -> PathBuf {
-        if let Ok(custom) = std::env::var("BOARDS_WORKSPACE") {
-            if !custom.trim().is_empty() {
-                return PathBuf::from(custom);
-            }
+        if let Some(custom) = std::env::var_os("LITTLEDRAW_WORKSPACE").filter(|v| !v.is_empty()) {
+            return PathBuf::from(custom);
         }
-        if let Ok(xdg) = std::env::var("XDG_CONFIG_HOME") {
-            if !xdg.trim().is_empty() {
-                return PathBuf::from(xdg).join("Boards").join("workspace");
-            }
+        let home = std::env::var_os("HOME").map(PathBuf::from);
+        let xdg_dir = |var: &str, fallback: &str| {
+            std::env::var_os(var)
+                .map(PathBuf::from)
+                .filter(|dir| dir.is_absolute())
+                .or_else(|| home.as_ref().map(|home| home.join(fallback)))
+        };
+        let Some(data) = xdg_dir("XDG_DATA_HOME", ".local/share") else {
+            return PathBuf::from(".littledraw-workspace");
+        };
+        let root = data.join("littledraw").join("workspace");
+        match xdg_dir("XDG_CONFIG_HOME", ".config") {
+            Some(config) => adopt_legacy_workspace(&config.join("Boards").join("workspace"), root),
+            None => root,
         }
-        if let Ok(home) = std::env::var("HOME") {
-            return PathBuf::from(home).join(".config").join("Boards").join("workspace");
-        }
-        PathBuf::from(".boards-workspace")
     }
 
     pub fn open(root: PathBuf) -> Result<Self, String> {
@@ -293,7 +322,7 @@ mod tests {
     use super::*;
 
     fn temp_workspace(name: &str) -> PathBuf {
-        let dir = std::env::temp_dir().join(format!("boards-test-{name}-{}", new_id()));
+        let dir = std::env::temp_dir().join(format!("littledraw-test-{name}-{}", new_id()));
         let _ = fs::remove_dir_all(&dir);
         dir
     }
@@ -321,6 +350,23 @@ mod tests {
         store.delete_board(&b1.id).unwrap();
         assert!(!store.board_path(&b1.id).exists());
         assert!(!store.thumbnail_path(&b1.id).exists());
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn legacy_workspace_is_moved_and_linked() {
+        let dir = temp_workspace("legacy");
+        let legacy = dir.join("config/Boards/workspace");
+        let root = dir.join("data/littledraw/workspace");
+        fs::create_dir_all(legacy.join("boards")).unwrap();
+        fs::write(legacy.join("workspace.json"), "{}").unwrap();
+
+        assert_eq!(adopt_legacy_workspace(&legacy, root.clone()), root);
+        assert_eq!(fs::read_to_string(root.join("workspace.json")).unwrap(), "{}");
+        #[cfg(unix)]
+        assert_eq!(fs::read_link(&legacy).unwrap(), root);
+        // Once moved, later runs leave both folders alone.
+        assert_eq!(adopt_legacy_workspace(&legacy, root.clone()), root);
         let _ = fs::remove_dir_all(&dir);
     }
 

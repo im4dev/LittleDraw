@@ -1,13 +1,16 @@
 [package]
-name = "board-app"
+name = "littledraw"
+description = "LittleDraw: a native, Excalidraw-compatible whiteboard with a project manager"
 edition.workspace = true
 version.workspace = true
+license.workspace = true
+repository.workspace = true
 
 [dependencies]
 arboard = { version = "3.7.0", default-features = false, features = ["image-data", "wayland-data-control"] }
 base64 = "0.23.1"
 image = { version = "0.25.10", default-features = false, features = ["png", "jpeg", "gif", "webp", "bmp"] }
-board-core = { version = "0.1.0", path = "../core" }
+littledraw-core = { version = "0.1.0", path = "../core" }
 png = "0.18"
 pollster = "1.0.1"
 rfd = "0.18.0"

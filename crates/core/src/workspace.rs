@@ -1,7 +1,7 @@
 //! Platform-independent workspace index model (`workspace.json`).
 //!
 //! Uses the exact JSON schema (`version: 1`, camelCase timestamps) of the
-//! desktop `Boards` app so workspaces are 100% interchangeable.
+//! desktop manager (the Electron app LittleDraw replaced) so workspaces are 100% interchangeable.
 
 use serde::{Deserialize, Serialize};
 
