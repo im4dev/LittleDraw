@@ -24,7 +24,7 @@ jobs:
     # The oldest supported runner, so the AppImage runs on older glibc too.
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - id: version
         run: ./.github/release-version.sh "$GITHUB_REF_NAME"
       - run: sudo apt-get update && sudo apt-get install -y libwayland-dev libxkbcommon-dev pkg-config squashfs-tools
@@ -36,7 +36,7 @@ jobs:
         run: |
           mkdir -p pack
           cp target/release/littledraw LICENSE THIRD_PARTY_NOTICES.md pack/
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: 9.0.x
       - run: dotnet tool install -g vpk --version "$VPK_VERSION"
@@ -67,7 +67,7 @@ jobs:
       run:
         shell: bash
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - id: version
         run: ./.github/release-version.sh "$GITHUB_REF_NAME"
       - uses: dtolnay/rust-toolchain@stable
@@ -77,7 +77,7 @@ jobs:
         run: |
           mkdir -p pack
           cp target/release/littledraw.exe LICENSE THIRD_PARTY_NOTICES.md pack/
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: 9.0.x
       - run: dotnet tool install -g vpk --version "$VPK_VERSION"
