@@ -16,7 +16,7 @@ Las fuentes embebidas tienen licencia SIL Open Font License 1.1, salvo Comic Sha
 
 ## Dependencias de Rust
 
-Las bibliotecas de crates.io que se compilan dentro del binario (`vello`, `wgpu`, `winit`, `kurbo`, `skrifa`, `serde`, `image` y sus dependencias) tienen licencias permisivas: MIT, Apache-2.0, BSD, Zlib, ISC y Unicode-3.0. Cada una incluye su texto de licencia en su paquete.
+Las bibliotecas de crates.io que se compilan dentro del binario (`vello`, `wgpu`, `winit`, `kurbo`, `skrifa`, `serde`, `image`, `velopack` y sus dependencias) tienen licencias permisivas: MIT, Apache-2.0, BSD, Zlib, ISC, Unicode-3.0 y CDLA-Permissive-2.0 (la lista de certificados raíz que usan las actualizaciones). Cada una incluye su texto de licencia en su paquete.
 
 ## Licencias
 
