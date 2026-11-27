@@ -1,9 +1,19 @@
 [workspace]
 resolver = "2"
-members = ["crates/core", "crates/app"]
+members = ["crates/core", "crates/app", "crates/web"]
+# `cargo build`/`cargo run` build the desktop app; the web crate is built
+# for wasm32 (see docs/DEVELOPMENT.md).
+default-members = ["crates/core", "crates/app"]
 
 [workspace.package]
 edition = "2021"
 version = "0.1.0"
 license = "MIT"
 repository = "https://github.com/im4dev/LittleDraw"
+
+# The browser demo: smaller WebAssembly to download (`site/build.sh`).
+[profile.web]
+inherits = "release"
+opt-level = "s"
+lto = true
+codegen-units = 1

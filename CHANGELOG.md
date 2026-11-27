@@ -5,6 +5,14 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y l
 ## [Sin publicar]
 
 ### Añadido
+- Demo en el navegador ([im4dev.github.io/LittleDraw/demo](https://im4dev.github.io/LittleDraw/demo/)): el mismo editor compilado a WebAssembly y dibujado con Canvas 2D. Abre, guarda y exporta archivos, y recuerda el dibujo en el navegador.
+
+### Cambiado
+- Los dibujos nuevos guardan `"source": "littledraw"` en lugar de `"pizarra"`.
+
+## [0.1.0] - 2026-11-27
+
+### Añadido
 - Versión para Windows, con instalador (`Setup.exe`) e icono en el ejecutable.
 - Instaladores con actualización automática (Velopack): AppImage para Linux y `Setup.exe` para Windows. Las versiones nuevas se descargan en segundo plano y se instalan al cerrar la aplicación.
 - Página web con descargas en GitHub Pages.

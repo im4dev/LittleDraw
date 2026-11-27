@@ -74,7 +74,9 @@ Reproduce el estilo dibujado a mano, las herramientas y el formato de [Excalidra
 
 ## Instalación
 
-Descarga LittleDraw desde **[im4dev.github.io/LittleDraw](https://im4dev.github.io/LittleDraw/)** o desde la [última versión](https://github.com/im4dev/LittleDraw/releases/latest):
+**Pruébalo en el navegador:** [im4dev.github.io/LittleDraw/demo](https://im4dev.github.io/LittleDraw/demo/), el mismo editor sin instalar nada.
+
+O descarga la aplicación desde **[im4dev.github.io/LittleDraw](https://im4dev.github.io/LittleDraw/)** o desde la [última versión](https://github.com/im4dev/LittleDraw/releases/latest):
 
 | Sistema | Archivo | Pasos |
 |---|---|---|
@@ -123,13 +125,13 @@ La carpeta de datos contiene `workspace.json` (el índice), `boards/` (una escen
 
 ## Estado
 
-- **Plataformas:** Linux y Windows. El siguiente paso es una demo que funcione en el navegador.
+- **Plataformas:** Linux y Windows, y una demo en el navegador (el editor, sin el gestor de proyectos).
 - **Datos locales:** no hay cuentas ni sincronización en la nube.
 - **Cambios:** ver [`CHANGELOG.md`](CHANGELOG.md).
 
 ## Desarrollo
 
-La arquitectura, las pruebas, las capturas y cómo publicar una versión están en [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md).
+La arquitectura, las pruebas, las capturas, la demo web y cómo publicar una versión están en [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md).
 
 ## Licencia y créditos
 

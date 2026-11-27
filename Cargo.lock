@@ -1155,6 +1155,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "littledraw-web"
+version = "0.1.0"
+dependencies = [
+ "js-sys",
+ "littledraw-core",
+ "serde_json",
+ "wasm-bindgen",
+ "web-sys",
+]
+
+[[package]]
 name = "lock_api"
 version = "0.4.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"

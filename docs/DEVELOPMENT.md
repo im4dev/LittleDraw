@@ -107,16 +107,19 @@ Si el tag no coincide con `Cargo.toml`, el workflow falla antes de compilar.
   ```
 - Sin un certificado de firma de código, SmartScreen muestra un aviso la primera vez que se abre el instalador.
 
-## Web
+## Web y demo
 
-`site/` es la página de [im4dev.github.io/LittleDraw](https://im4dev.github.io/LittleDraw/). `.github/workflows/pages.yml` la publica en GitHub Pages cada vez que cambia en `main`, y le copia las capturas de `docs/screenshots/`, el icono y la fuente Excalifont. Los botones de descarga apuntan a `releases/latest/download/…`, así que no hay que tocar la web en cada versión.
+`site/` es la página de [im4dev.github.io/LittleDraw](https://im4dev.github.io/LittleDraw/), y `site/demo/` la demo en el navegador ([/demo/](https://im4dev.github.io/LittleDraw/demo/)).
 
-Para verla en local:
+- **`littledraw-web`** (`crates/web`) compila el mismo `Editor` del núcleo a WebAssembly y pinta su `Frame` con la API Canvas 2D, así que funciona en cualquier navegador actual, sin WebGPU. Los `Path2D` se guardan en caché mientras el núcleo reutiliza la geometría de cada elemento.
+- **`site/demo/main.js`** traduce los eventos del navegador (puntero con presión de lápiz, rueda, teclado, IME, portapapeles, arrastrar y soltar) y se ocupa de lo que solo hace la página: abrir, guardar y exportar archivos y guardar el dibujo en `localStorage`.
+- **`site/build.sh`** arma el sitio completo: copia `site/`, las capturas, el icono y la fuente, y compila la demo. `.github/workflows/pages.yml` lo ejecuta y publica el resultado en GitHub Pages cada vez que cambian en `main` la web, el núcleo, el crate web o los ejemplos. Los botones de descarga apuntan a `releases/latest/download/…`, así que no hay que tocar la web en cada versión.
+
+`cargo build` sin `-p` no compila el crate web (no está en `default-members`). Para verlo en local hace falta el target y la CLI de `wasm-bindgen` de la misma versión que el crate en `Cargo.lock`:
 
 ```bash
-mkdir -p target/site/img target/site/fonts
-cp -r site/. target/site/
-cp docs/screenshots/*.png resources/icon.png target/site/img/
-cp crates/core/fonts/Excalifont/Excalifont-Regular-a88b72a24fb54c9f94e3b5fdaa7481c9.woff2 target/site/fonts/excalifont.woff2
-python3 -m http.server -d target/site 8000
+rustup target add wasm32-unknown-unknown
+cargo install wasm-bindgen-cli --version 0.2.130 --locked   # la versión de Cargo.lock
+./site/build.sh target/site
+python3 -m http.server -d target/site 8000                  # http://localhost:8000/demo/
 ```

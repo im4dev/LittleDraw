@@ -253,7 +253,7 @@ impl Default for Document {
         Document {
             kind: "excalidraw".to_owned(),
             version: 2,
-            source: "pizarra".to_owned(),
+            source: "littledraw".to_owned(),
             elements: Vec::new(),
             app_state: Value::Object(Map::new()),
             files: Value::Object(Map::new()),

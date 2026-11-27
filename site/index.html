@@ -100,7 +100,10 @@
     .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
     .btn svg { width: 20px; height: 20px; flex: none; }
     .btn small { font-weight: 400; opacity: .8; }
-    .release-note { margin-top: 14px; color: var(--muted); font-size: 14px; min-height: 1.6em; }
+    .release-note { margin: 14px 0 0; color: var(--muted); font-size: 14px; min-height: 1.6em; }
+    .try { margin: 6px 0 0; font-weight: 600; }
+    .try a { text-decoration: none; }
+    .try a:hover { text-decoration: underline; }
 
     .shot {
       margin: 40px auto 0;
@@ -156,6 +159,7 @@
     <header class="top">
       <a class="brand" href="./"><img src="img/icon.png" alt="" width="36" height="36"><span>LittleDraw</span></a>
       <nav>
+        <a href="demo/">Demo</a>
         <a href="#descargar">Descargar</a>
         <a href="https://github.com/im4dev/LittleDraw">GitHub</a>
       </nav>
@@ -175,6 +179,7 @@
         </a>
       </div>
       <p class="release-note" id="release-note">Gratis y de código abierto. Se actualiza solo.</p>
+      <p class="try"><a href="demo/">Pruébalo en el navegador, sin instalar nada →</a></p>
 
       <picture>
         <source srcset="img/editor-dark.png" media="(prefers-color-scheme: dark)">
@@ -245,7 +250,7 @@
       </div>
       <p class="sub" style="margin-top:20px">Las versiones nuevas se descargan solas en segundo plano y se instalan al cerrar la aplicación.</p>
 
-      <div class="soon"><strong>Próximamente:</strong> una demo para probar LittleDraw directamente en el navegador.</div>
+      <div class="soon"><strong>¿Quieres probar antes?</strong> La <a href="demo/">demo en el navegador</a> es el mismo editor, sin el gestor de proyectos. Tus dibujos se guardan en el navegador.</div>
     </div>
   </section>
 

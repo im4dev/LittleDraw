@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, interactive-widget=resizes-content">
+  <title>LittleDraw · Demo</title>
+  <meta name="description" content="Prueba LittleDraw en el navegador: pizarra con estilo dibujado a mano, compatible con Excalidraw.">
+  <link rel="icon" type="image/png" href="../img/icon.png">
+  <style>
+    :root {
+      --bar-bg: rgb(255 255 255 / 92%);
+      --bar-text: #1e1e24;
+      --bar-muted: #5c5c6b;
+      --bar-line: #e4e2da;
+      --bar-hover: #f1f0ff;
+      --accent: #6965db;
+      --page: #ffffff;
+      color-scheme: light;
+    }
+    :root[data-theme="dark"] {
+      --bar-bg: rgb(35 35 41 / 92%);
+      --bar-text: #ececf1;
+      --bar-muted: #a3a3b2;
+      --bar-line: #34343d;
+      --bar-hover: #2f2f45;
+      --accent: #a8a5ff;
+      --page: #121212;
+      color-scheme: dark;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; overflow: hidden; background: var(--page); }
+    body { font: 14px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; color: var(--bar-text); }
+
+    #board {
+      position: fixed; inset: 0; width: 100vw; height: 100dvh;
+      display: block; touch-action: none; outline: none;
+    }
+    /* Receives typed text and IME input while a text is being edited. */
+    #keys {
+      position: fixed; left: 0; bottom: 0; width: 1px; height: 1px;
+      opacity: 0; border: 0; padding: 0; resize: none; pointer-events: none;
+    }
+
+    .bar {
+      position: fixed; right: 12px; bottom: 12px;
+      display: flex; align-items: center; gap: 4px; flex-wrap: wrap; justify-content: flex-end;
+      max-width: calc(100vw - 24px);
+      padding: 6px; border-radius: 12px;
+      background: var(--bar-bg); border: 1px solid var(--bar-line);
+      box-shadow: 0 2px 12px rgb(0 0 0 / 12%);
+      backdrop-filter: blur(8px);
+    }
+    .bar .brand {
+      display: flex; align-items: center; gap: 6px; padding: 0 8px 0 4px;
+      color: var(--bar-text); text-decoration: none; font-weight: 600;
+    }
+    .bar .brand img { width: 20px; height: 20px; }
+    .bar .brand small { color: var(--bar-muted); font-weight: 400; }
+    .bar button, .bar a.button {
+      font: inherit; color: var(--bar-text); background: none; border: 0; cursor: pointer;
+      padding: 6px 10px; border-radius: 8px; text-decoration: none; white-space: nowrap;
+    }
+    .bar button:hover, .bar a.button:hover { background: var(--bar-hover); }
+    .bar a.button.primary { background: var(--accent); color: #fff; }
+    :root[data-theme="dark"] .bar a.button.primary { color: #16161a; }
+    .menu { position: relative; }
+    .menu [role="menu"] {
+      position: absolute; right: 0; bottom: calc(100% + 8px); min-width: 170px;
+      padding: 4px; border-radius: 10px;
+      background: var(--bar-bg); border: 1px solid var(--bar-line); box-shadow: 0 2px 12px rgb(0 0 0 / 12%);
+    }
+    .menu [role="menu"] button { display: block; width: 100%; text-align: left; }
+    .menu [role="menu"][hidden] { display: none; }
+
+    #notice {
+      position: fixed; left: 50%; bottom: 72px; transform: translateX(-50%);
+      max-width: calc(100vw - 32px); padding: 8px 14px; border-radius: 10px;
+      background: var(--bar-bg); border: 1px solid var(--bar-line); box-shadow: 0 2px 12px rgb(0 0 0 / 12%);
+    }
+    #notice[hidden] { display: none; }
+
+    #loading {
+      position: fixed; inset: 0; display: grid; place-items: center;
+      color: var(--bar-muted); background: var(--page);
+    }
+    #loading[hidden] { display: none; }
+
+    @media (max-width: 560px) {
+      .bar { right: 8px; bottom: 8px; padding: 4px; gap: 0; flex-wrap: nowrap; }
+      .bar .brand small, .bar .wide { display: none; }
+      .bar button, .bar a.button { padding: 6px 8px; }
+    }
+  </style>
+  <script>
+    // Theme before first paint, so the page does not flash light.
+    (function () {
+      var saved = null;
+      try { saved = localStorage.getItem("littledraw-demo:theme"); } catch (e) {}
+      var dark = saved ? saved === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
+      document.documentElement.dataset.theme = dark ? "dark" : "light";
+    })();
+  </script>
+</head>
+<body>
+  <canvas id="board" tabindex="0" aria-label="Pizarra de LittleDraw"></canvas>
+  <textarea id="keys" aria-hidden="true" tabindex="-1" autocomplete="off" autocapitalize="off" spellcheck="false"></textarea>
+
+  <div class="bar" role="toolbar" aria-label="Archivo">
+    <a class="brand" href="../" aria-label="LittleDraw, volver a la página principal"><img src="../img/icon.png" alt=""><span class="wide">LittleDraw</span> <small>demo</small></a>
+    <button type="button" id="new" class="wide">Nuevo</button>
+    <button type="button" id="open">Abrir</button>
+    <button type="button" id="save">Guardar</button>
+    <div class="menu">
+      <button type="button" id="export" aria-haspopup="menu" aria-expanded="false">Exportar</button>
+      <div role="menu" id="export-menu" hidden>
+        <button type="button" role="menuitem" id="export-png">Imagen PNG</button>
+        <button type="button" role="menuitem" id="export-svg">Imagen SVG</button>
+      </div>
+    </div>
+    <a class="button primary" href="../#descargar">Descargar<span class="wide"> la app</span></a>
+  </div>
+
+  <div id="notice" role="status" hidden></div>
+  <div id="loading">Cargando LittleDraw…</div>
+
+  <input type="file" id="pick-image" accept="image/png,image/jpeg,image/gif,image/webp,image/bmp" hidden>
+  <input type="file" id="pick-drawing" accept=".excalidraw,.json,application/json" hidden>
+
+  <noscript><p style="position:fixed;inset:0;display:grid;place-items:center">La demo necesita JavaScript.</p></noscript>
+  <script type="module" src="main.js"></script>
+</body>
+</html>
