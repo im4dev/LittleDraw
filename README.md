@@ -74,7 +74,16 @@ Reproduce el estilo dibujado a mano, las herramientas y el formato de [Excalidra
 
 ## Instalación
 
-Por ahora LittleDraw se compila desde el código fuente y está pensado para **Linux** (Wayland o X11). Hace falta [Rust](https://rustup.rs) y una GPU con Vulkan.
+Descarga LittleDraw desde **[im4dev.github.io/LittleDraw](https://im4dev.github.io/LittleDraw/)** o desde la [última versión](https://github.com/im4dev/LittleDraw/releases/latest):
+
+| Sistema | Archivo | Pasos |
+|---|---|---|
+| Linux (Wayland o X11) | `LittleDraw.AppImage` | `chmod +x LittleDraw.AppImage` y ábrelo |
+| Windows 10 y 11 | `LittleDraw-win-Setup.exe` | Ábrelo; si aparece «Windows protegió su PC», pulsa *Más información* → *Ejecutar de todas formas* |
+
+Las versiones nuevas se descargan solas en segundo plano y se instalan al cerrar la aplicación. Hace falta una GPU con Vulkan (Linux) o DirectX 12 (Windows).
+
+### Compilar desde el código
 
 ```bash
 git clone https://github.com/im4dev/LittleDraw
@@ -82,10 +91,12 @@ cd LittleDraw
 cargo build --release
 install -Dm755 target/release/littledraw ~/.local/bin/littledraw
 
-# Opcional: entrada en el menú de aplicaciones
+# Opcional (Linux): entrada en el menú de aplicaciones
 install -Dm644 resources/littledraw.desktop ~/.local/share/applications/littledraw.desktop
 install -Dm644 resources/icon.png ~/.local/share/icons/hicolor/512x512/apps/littledraw.png
 ```
+
+Una copia compilada así no se actualiza sola.
 
 ## Uso
 
@@ -101,22 +112,24 @@ littledraw dibujo.excalidraw --svg dibujo.svg --png dibujo.png --scale 2
 
 ### Dónde se guardan los datos
 
-| Qué | Dónde | Se cambia con |
-|---|---|---|
-| Proyectos y pizarras | `~/.local/share/littledraw/workspace` (`$XDG_DATA_HOME`) | `--workspace DIR` o `LITTLEDRAW_WORKSPACE` |
-| Tema elegido | `~/.config/littledraw/theme` (`$XDG_CONFIG_HOME`) | el botón de tema o `Alt+Shift+D` |
+| Qué | Linux | Windows | Se cambia con |
+|---|---|---|---|
+| Proyectos y pizarras | `~/.local/share/littledraw/workspace` | `%APPDATA%\LittleDraw\workspace` | `--workspace DIR` o `LITTLEDRAW_WORKSPACE` |
+| Tema elegido | `~/.config/littledraw/theme` | `%APPDATA%\LittleDraw\theme` | el botón de tema o `Alt+Shift+D` |
 
-La carpeta de datos contiene `workspace.json` (el índice), `boards/` (una escena `.excalidraw` por pizarra) y `thumbnails/` (las miniaturas). Si existe una carpeta de una versión anterior en `~/.config/Boards/workspace`, se mueve a la nueva ubicación la primera vez y la antigua queda como un enlace a la nueva.
+En Linux se respetan `$XDG_DATA_HOME` y `$XDG_CONFIG_HOME`.
+
+La carpeta de datos contiene `workspace.json` (el índice), `boards/` (una escena `.excalidraw` por pizarra) y `thumbnails/` (las miniaturas). En Linux, si existe una carpeta de una versión anterior en `~/.config/Boards/workspace`, se mueve a la nueva ubicación la primera vez y la antigua queda como un enlace a la nueva.
 
 ## Estado
 
-- **Plataformas:** Linux. Windows, una demo web y un instalador con actualizaciones automáticas son los próximos pasos.
+- **Plataformas:** Linux y Windows. El siguiente paso es una demo que funcione en el navegador.
 - **Datos locales:** no hay cuentas ni sincronización en la nube.
 - **Cambios:** ver [`CHANGELOG.md`](CHANGELOG.md).
 
 ## Desarrollo
 
-La arquitectura, las pruebas y cómo generar las capturas están en [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md).
+La arquitectura, las pruebas, las capturas y cómo publicar una versión están en [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md).
 
 ## Licencia y créditos
 

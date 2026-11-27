@@ -78,3 +78,45 @@ Las capturas del gestor y `pen-pressure.png` se toman a mano desde la aplicació
 ## Fuentes y licencias
 
 Para añadir o cambiar una fuente, copia el WOFF2 en `crates/core/fonts/<Familia>/`, regístralo en `crates/core/src/font_data.rs` y añade su copyright y licencia a `crates/core/fonts/README.md`. Si la licencia es nueva, añade también su texto. Las dependencias de Rust deben tener licencias compatibles con MIT.
+
+## Publicar una versión
+
+Las versiones se publican desde GitHub Actions (`.github/workflows/release.yml`) con [Velopack](https://velopack.io):
+
+1. Sube la versión en `Cargo.toml` (`[workspace.package] version`), pasa la sección `[Sin publicar]` de `CHANGELOG.md` a la versión nueva y haz commit en `main`.
+2. Crea y sube el tag, que debe coincidir con la versión:
+   ```bash
+   git tag v0.2.0
+   git push origin v0.2.0
+   ```
+3. El workflow compila y prueba en Ubuntu 22.04 y en Windows, empaqueta con `vpk` y publica el release con:
+   - `LittleDraw.AppImage` y `LittleDraw-win-Setup.exe`, los instaladores que enlaza la web;
+   - los paquetes completos y delta (`.nupkg`) y los feeds `releases.*.json`, que leen las copias instaladas para actualizarse.
+
+Si el tag no coincide con `Cargo.toml`, el workflow falla antes de compilar.
+
+### Cómo se actualiza la aplicación
+
+`crates/app/src/update.rs` usa el crate `velopack`. Al arrancar, una copia instalada consulta el último release de GitHub en segundo plano, descarga la versión nueva y la instala al cerrarse; el gestor muestra un aviso cuando está lista. Una copia compilada desde el código no se actualiza. Las versiones del crate `velopack` y de `vpk` (`VPK_VERSION` en el workflow) deben coincidir.
+
+### Windows
+
+- `crates/app/build.rs` incrusta `resources/icon.ico` en el `.exe`; regenera el `.ico` si cambia `resources/icon.png`:
+  ```bash
+  magick resources/icon.png -define icon:auto-resize=256,128,64,48,32,24,16 resources/icon.ico
+  ```
+- Sin un certificado de firma de código, SmartScreen muestra un aviso la primera vez que se abre el instalador.
+
+## Web
+
+`site/` es la página de [im4dev.github.io/LittleDraw](https://im4dev.github.io/LittleDraw/). `.github/workflows/pages.yml` la publica en GitHub Pages cada vez que cambia en `main`, y le copia las capturas de `docs/screenshots/`, el icono y la fuente Excalifont. Los botones de descarga apuntan a `releases/latest/download/…`, así que no hay que tocar la web en cada versión.
+
+Para verla en local:
+
+```bash
+mkdir -p target/site/img target/site/fonts
+cp -r site/. target/site/
+cp docs/screenshots/*.png resources/icon.png target/site/img/
+cp crates/core/fonts/Excalifont/Excalifont-Regular-a88b72a24fb54c9f94e3b5fdaa7481c9.woff2 target/site/fonts/excalifont.woff2
+python3 -m http.server -d target/site 8000
+```

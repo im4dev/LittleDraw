@@ -5,6 +5,9 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y l
 ## [Sin publicar]
 
 ### Añadido
+- Versión para Windows, con instalador (`Setup.exe`) e icono en el ejecutable.
+- Instaladores con actualización automática (Velopack): AppImage para Linux y `Setup.exe` para Windows. Las versiones nuevas se descargan en segundo plano y se instalan al cerrar la aplicación.
+- Página web con descargas en GitHub Pages.
 - Plano cartesiano (tecla `C`) con ajuste de líneas y flechas a su cuadrícula.
 - Relleno en cuadrícula (`grid`); las líneas de hachure y cross-hatch ya no se salen de la figura.
 - Selección de texto durante la edición, y subíndices y superíndices con `Ctrl+=` y `Ctrl++`.

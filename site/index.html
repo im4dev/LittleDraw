@@ -1,0 +1,283 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>LittleDraw</title>
+  <meta name="description" content="Pizarra con estilo dibujado a mano, nativa y sin navegador. Compatible con Excalidraw, con plano cartesiano y herramientas para dar clase. Para Linux y Windows.">
+  <meta property="og:title" content="LittleDraw">
+  <meta property="og:description" content="Pizarra nativa compatible con Excalidraw, para Linux y Windows.">
+  <meta property="og:image" content="img/littledraw.png">
+  <link rel="icon" type="image/png" href="img/icon.png">
+  <style>
+    @font-face {
+      font-family: "Excalifont";
+      src: url("fonts/excalifont.woff2") format("woff2");
+      font-display: swap;
+    }
+
+    :root {
+      --bg: #fdfcf8;
+      --surface: #ffffff;
+      --text: #1e1e24;
+      --muted: #5c5c6b;
+      --line: #e4e2da;
+      --accent: #6965db;
+      --accent-text: #ffffff;
+      --accent-soft: #ecebff;
+      --shadow: 0 1px 2px rgb(0 0 0 / 6%), 0 8px 24px rgb(0 0 0 / 6%);
+      color-scheme: light;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root:not([data-theme="light"]) {
+        --bg: #16161a;
+        --surface: #1f1f25;
+        --text: #ececf1;
+        --muted: #a3a3b2;
+        --line: #2f2f38;
+        --accent: #a8a5ff;
+        --accent-text: #16161a;
+        --accent-soft: #2a2950;
+        --shadow: 0 1px 2px rgb(0 0 0 / 30%), 0 8px 24px rgb(0 0 0 / 30%);
+        color-scheme: dark;
+      }
+    }
+    :root[data-theme="dark"] {
+      --bg: #16161a;
+      --surface: #1f1f25;
+      --text: #ececf1;
+      --muted: #a3a3b2;
+      --line: #2f2f38;
+      --accent: #a8a5ff;
+      --accent-text: #16161a;
+      --accent-soft: #2a2950;
+      --shadow: 0 1px 2px rgb(0 0 0 / 30%), 0 8px 24px rgb(0 0 0 / 30%);
+      color-scheme: dark;
+    }
+
+    * { box-sizing: border-box; }
+    html { -webkit-text-size-adjust: 100%; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font: 17px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    }
+    img { max-width: 100%; height: auto; display: block; }
+    a { color: var(--accent); }
+    .wrap { max-width: 1080px; margin: 0 auto; padding: 0 16px; }
+
+    header.top {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 18px 0;
+    }
+    .brand { display: flex; align-items: center; gap: 10px; text-decoration: none; color: var(--text); }
+    .brand img { width: 36px; height: 36px; }
+    .brand span { font: 26px/1 "Excalifont", cursive; }
+    .top nav a { color: var(--muted); text-decoration: none; margin-left: 20px; font-size: 15px; }
+    .top nav a:hover { color: var(--text); }
+
+    .hero { text-align: center; padding: 48px 0 32px; }
+    .hero h1 {
+      font: clamp(36px, 6vw, 60px)/1.1 "Excalifont", cursive;
+      margin: 0 0 16px;
+      text-wrap: balance;
+    }
+    .hero p.lead {
+      max-width: 640px; margin: 0 auto 28px;
+      color: var(--muted); font-size: 19px; text-wrap: pretty;
+    }
+    .downloads { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; }
+    .btn {
+      display: inline-flex; align-items: center; gap: 10px;
+      padding: 13px 22px; border-radius: 10px;
+      font-weight: 600; font-size: 16px; text-decoration: none;
+      border: 1.5px solid var(--line); background: var(--surface); color: var(--text);
+      box-shadow: var(--shadow);
+      transition: transform .12s ease;
+    }
+    .btn:hover { transform: translateY(-1px); }
+    .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
+    .btn svg { width: 20px; height: 20px; flex: none; }
+    .btn small { font-weight: 400; opacity: .8; }
+    .release-note { margin-top: 14px; color: var(--muted); font-size: 14px; min-height: 1.6em; }
+
+    .shot {
+      margin: 40px auto 0;
+      border: 1px solid var(--line); border-radius: 14px; overflow: hidden;
+      box-shadow: var(--shadow); background: #fff;
+    }
+
+    section.block { padding: 64px 0 8px; }
+    section.block h2 {
+      font: clamp(28px, 4vw, 38px)/1.2 "Excalifont", cursive;
+      margin: 0 0 10px; text-align: center;
+    }
+    section.block > .wrap > p.sub {
+      text-align: center; color: var(--muted); max-width: 620px; margin: 0 auto 32px;
+    }
+
+    .grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
+    .card {
+      background: var(--surface); border: 1px solid var(--line); border-radius: 12px;
+      padding: 20px 22px;
+    }
+    .card h3 { margin: 0 0 6px; font-size: 17px; }
+    .card p { margin: 0; color: var(--muted); font-size: 15px; }
+    kbd {
+      font: 13px ui-monospace, SFMono-Regular, Menlo, monospace;
+      background: var(--accent-soft); border-radius: 5px; padding: 1px 6px;
+    }
+
+    .split { display: grid; gap: 28px; align-items: center; grid-template-columns: 1fr; margin-top: 8px; }
+    @media (min-width: 860px) { .split { grid-template-columns: 1fr 1.3fr; } }
+    .split ul { margin: 0; padding-left: 20px; }
+    .split li { margin-bottom: 10px; }
+    .split li strong { display: block; }
+    .split li span { color: var(--muted); font-size: 15px; }
+
+    .steps { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
+    .steps code { font: 13.5px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; word-break: break-all; }
+    .steps ol { margin: 8px 0 0; padding-left: 20px; color: var(--muted); font-size: 15px; }
+
+    .soon {
+      text-align: center; margin: 56px auto 0; max-width: 620px;
+      border: 1.5px dashed var(--line); border-radius: 12px; padding: 20px;
+      color: var(--muted);
+    }
+    .soon strong { color: var(--text); }
+
+    footer { margin-top: 72px; padding: 28px 0 40px; border-top: 1px solid var(--line); color: var(--muted); font-size: 14px; }
+    footer p { margin: 4px 0; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header class="top">
+      <a class="brand" href="./"><img src="img/icon.png" alt="" width="36" height="36"><span>LittleDraw</span></a>
+      <nav>
+        <a href="#descargar">Descargar</a>
+        <a href="https://github.com/im4dev/LittleDraw">GitHub</a>
+      </nav>
+    </header>
+
+    <section class="hero" id="descargar">
+      <h1>Dibuja, explica y enseña</h1>
+      <p class="lead">Una pizarra con estilo dibujado a mano, nativa y sin navegador. Abre y guarda archivos de Excalidraw y trae herramientas para dar clase.</p>
+      <div class="downloads">
+        <a class="btn" data-os="linux" href="https://github.com/im4dev/LittleDraw/releases/latest/download/LittleDraw.AppImage">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m0 0-4.5-4.5M12 15l4.5-4.5M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>
+          Linux <small>AppImage</small>
+        </a>
+        <a class="btn" data-os="windows" href="https://github.com/im4dev/LittleDraw/releases/latest/download/LittleDraw-win-Setup.exe">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m0 0-4.5-4.5M12 15l4.5-4.5M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>
+          Windows <small>instalador</small>
+        </a>
+      </div>
+      <p class="release-note" id="release-note">Gratis y de código abierto. Se actualiza solo.</p>
+
+      <picture>
+        <source srcset="img/editor-dark.png" media="(prefers-color-scheme: dark)">
+        <img class="shot" src="img/editor-light.png" width="1280" height="800" alt="Editor de LittleDraw con un diagrama dibujado a mano, la barra de herramientas y el panel de estilos">
+      </picture>
+    </section>
+  </div>
+
+  <section class="block">
+    <div class="wrap">
+      <h2>Hecho para dar clase</h2>
+      <p class="sub">Lo que una pizarra de aula necesita y una herramienta de diagramas no suele tener.</p>
+      <div class="split">
+        <ul>
+          <li><strong>Plano cartesiano</strong><span>Tecla <kbd>C</kbd> y arrastra: cuadrícula, ejes, números y etiquetas. Las rectas se ajustan a sus intersecciones.</span></li>
+          <li><strong>Relleno en cuadrícula</strong><span>Hojas cuadriculadas dentro de cualquier figura, con los ejes marcados.</span></li>
+          <li><strong>Subíndices y superíndices</strong><span><kbd>Ctrl</kbd> + <kbd>=</kbd> y <kbd>Ctrl</kbd> + <kbd>+</kbd> mientras escribes: H₂O, x², aₙ₊₁.</span></li>
+          <li><strong>Presión del lápiz</strong><span>Trazos con grosor variable usando una tableta gráfica.</span></li>
+        </ul>
+        <img class="shot" src="img/math-tools.png" width="1768" height="1068" loading="lazy" alt="Plano cartesiano con la recta y = x, un rectángulo con relleno en cuadrícula, una elipse con hachure y fórmulas con subíndices y superíndices">
+      </div>
+    </div>
+  </section>
+
+  <section class="block">
+    <div class="wrap">
+      <h2>Tus pizarras, ordenadas</h2>
+      <p class="sub">Un gestor de proyectos con miniaturas, búsqueda y guardado automático. Todo queda en tu equipo, sin cuentas ni nube.</p>
+      <picture>
+        <source srcset="img/manager-dark.png" media="(prefers-color-scheme: dark)">
+        <img class="shot" src="img/manager-light.png" width="1280" height="800" loading="lazy" alt="Gestor de proyectos de LittleDraw con tarjetas de pizarras y miniaturas">
+      </picture>
+    </div>
+  </section>
+
+  <section class="block">
+    <div class="wrap">
+      <h2>Ligera y compatible</h2>
+      <div class="grid">
+        <div class="card"><h3>Compatible con Excalidraw</h3><p>Abre y guarda <code>.excalidraw</code>, conserva lo que no entiende y copia y pega entre ambas.</p></div>
+        <div class="card"><h3>Nativa, sin navegador</h3><p>Escrita en Rust y dibujada directamente en la GPU. Sin Electron ni Chromium.</p></div>
+        <div class="card"><h3>Exporta a PNG y SVG</h3><p>Desde el editor con <kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>E</kbd>, desde el gestor o desde la terminal.</p></div>
+        <div class="card"><h3>Tema claro y oscuro</h3><p>Cambia con <kbd>Alt</kbd> + <kbd>Shift</kbd> + <kbd>D</kbd>; tus dibujos no se modifican.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="block">
+    <div class="wrap">
+      <h2>Instalación</h2>
+      <div class="steps">
+        <div class="card">
+          <h3>Linux</h3>
+          <ol>
+            <li>Descarga <code>LittleDraw.AppImage</code>.</li>
+            <li>Dale permiso de ejecución: <code>chmod +x LittleDraw.AppImage</code></li>
+            <li>Ábrelo con doble clic o desde la terminal.</li>
+          </ol>
+        </div>
+        <div class="card">
+          <h3>Windows 10 y 11</h3>
+          <ol>
+            <li>Descarga y abre <code>LittleDraw-win-Setup.exe</code>.</li>
+            <li>Si Windows muestra «Windows protegió su PC», pulsa <strong>Más información</strong> y luego <strong>Ejecutar de todas formas</strong>.</li>
+            <li>LittleDraw queda en el menú Inicio.</li>
+          </ol>
+        </div>
+      </div>
+      <p class="sub" style="margin-top:20px">Las versiones nuevas se descargan solas en segundo plano y se instalan al cerrar la aplicación.</p>
+
+      <div class="soon"><strong>Próximamente:</strong> una demo para probar LittleDraw directamente en el navegador.</div>
+    </div>
+  </section>
+
+  <footer>
+    <div class="wrap">
+      <p>LittleDraw es software libre con licencia <a href="https://github.com/im4dev/LittleDraw/blob/main/LICENSE">MIT</a>. <a href="https://github.com/im4dev/LittleDraw/releases">Todas las versiones</a> · <a href="https://github.com/im4dev/LittleDraw/blob/main/CHANGELOG.md">Cambios</a></p>
+      <p>Basado en el diseño y el formato de <a href="https://github.com/excalidraw/excalidraw">Excalidraw</a> (MIT). Proyecto independiente, sin relación con el equipo de Excalidraw.</p>
+    </div>
+  </footer>
+
+  <script>
+    // Highlight the download for the visitor's system.
+    (function () {
+      var ua = navigator.userAgent || "";
+      var os = /Windows/i.test(ua) ? "windows" : /Linux|X11/i.test(ua) && !/Android/i.test(ua) ? "linux" : null;
+      var buttons = document.querySelectorAll(".downloads .btn");
+      var match = null;
+      buttons.forEach(function (b) { if (b.dataset.os === os) match = b; });
+      (match || buttons[0]).classList.add("primary");
+      if (match && match !== buttons[0]) match.parentNode.insertBefore(match, buttons[0]);
+    })();
+
+    // Show the latest version number; the links work without it.
+    fetch("https://api.github.com/repos/im4dev/LittleDraw/releases/latest")
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (release) {
+        if (!release || !release.tag_name) return;
+        var date = new Date(release.published_at).toLocaleDateString("es", { year: "numeric", month: "long", day: "numeric" });
+        document.getElementById("release-note").textContent =
+          "Versión " + release.tag_name.replace(/^v/, "") + " · " + date + " · Gratis y de código abierto.";
+      })
+      .catch(function () {});
+  </script>
+</body>
+</html>
