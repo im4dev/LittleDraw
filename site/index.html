@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>LittleDraw</title>
-  <meta name="description" content="Pizarra con estilo dibujado a mano, nativa y sin navegador. Compatible con Excalidraw, con plano cartesiano y herramientas para dar clase. Para Linux y Windows.">
+  <meta name="description" content="LittleDraw, la pizarra de escritorio basada en Excalidraw: ligera, nativa, sin navegador ni cuentas. Para Linux y Windows.">
   <meta property="og:title" content="LittleDraw">
   <meta property="og:description" content="Pizarra nativa compatible con Excalidraw, para Linux y Windows.">
   <meta property="og:image" content="img/littledraw.png">
@@ -80,7 +80,22 @@
     .hero { text-align: center; padding: 48px 0 32px; }
     .hero h1 {
       font: clamp(36px, 6vw, 60px)/1.1 "Excalifont", cursive;
-      margin: 0 0 16px;
+      margin: 0 0 8px;
+      text-wrap: balance;
+    }
+    .hero h1 .logo {
+      width: min(720px, 100%); height: auto; margin: 0 auto;
+      /* The gold is drawn for a dark background; deepen it on light pages. */
+      filter: brightness(.8) saturate(1.25);
+    }
+    @media (prefers-color-scheme: dark) {
+      :root:not([data-theme="light"]) .hero h1 .logo { filter: none; }
+    }
+    :root[data-theme="dark"] .hero h1 .logo { filter: none; }
+    .hero p.tagline {
+      margin: 10px 0 14px;
+      font: clamp(22px, 3vw, 30px)/1.25 "Excalifont", cursive;
+      color: var(--accent);
       text-wrap: balance;
     }
     .hero p.lead {
@@ -101,10 +116,20 @@
     .btn svg { width: 20px; height: 20px; flex: none; }
     .btn small { font-weight: 400; opacity: .8; }
     .release-note { margin: 14px 0 0; color: var(--muted); font-size: 14px; min-height: 1.6em; }
-    .try { margin: 6px 0 0; font-weight: 600; }
-    .try a { text-decoration: none; }
-    .try a:hover { text-decoration: underline; }
+    .btn.demo { border-color: var(--accent); color: var(--accent); }
+    .btn.demo svg { fill: currentColor; }
+    .top nav a.nav-demo {
+      color: var(--accent); font-weight: 600;
+      border: 1.5px solid var(--accent); border-radius: 8px; padding: 6px 14px;
+    }
+    .top nav a.nav-demo:hover { background: var(--accent); color: var(--accent-text); }
+    @media (max-width: 560px) {
+      .top nav a:not(.nav-demo) { display: none; }
+      .downloads { flex-direction: column; align-items: stretch; max-width: 360px; margin: 0 auto; }
+      .btn { justify-content: center; }
+    }
 
+    .shot.dark { background: #121212; border-color: #2f2f38; }
     .shot {
       margin: 40px auto 0;
       border: 1px solid var(--line); border-radius: 14px; overflow: hidden;
@@ -159,39 +184,43 @@
     <header class="top">
       <a class="brand" href="./"><img src="img/icon.png" alt="" width="36" height="36"><span>LittleDraw</span></a>
       <nav>
-        <a href="demo/">Demo</a>
         <a href="#descargar">Descargar</a>
         <a href="https://github.com/im4dev/LittleDraw">GitHub</a>
+        <a class="nav-demo" href="demo/">Demo</a>
       </nav>
     </header>
 
     <section class="hero" id="descargar">
-      <h1>Dibuja, explica y enseña</h1>
-      <p class="lead">Una pizarra con estilo dibujado a mano, nativa y sin navegador. Abre y guarda archivos de Excalidraw y trae herramientas para dar clase.</p>
+      <h1><img class="logo" src="img/logo.png" width="1600" height="216" alt="LittleDraw"></h1>
+      <p class="tagline">La pizarra de escritorio basada en Excalidraw</p>
+      <p class="lead">Ligera y nativa, sin navegador ni cuentas. Abre y guarda tus archivos <code>.excalidraw</code> en local.</p>
       <div class="downloads">
-        <a class="btn" data-os="linux" href="https://github.com/im4dev/LittleDraw/releases/latest/download/LittleDraw.AppImage">
+        <a class="btn dl" data-os="linux" href="https://github.com/im4dev/LittleDraw/releases/latest/download/LittleDraw.AppImage">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m0 0-4.5-4.5M12 15l4.5-4.5M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>
-          Linux <small>AppImage</small>
+          Descargar para Linux <small>13 MB</small>
         </a>
-        <a class="btn" data-os="windows" href="https://github.com/im4dev/LittleDraw/releases/latest/download/LittleDraw-win-Setup.exe">
+        <a class="btn dl" data-os="windows" href="https://github.com/im4dev/LittleDraw/releases/latest/download/LittleDraw-win-Setup.exe">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m0 0-4.5-4.5M12 15l4.5-4.5M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>
-          Windows <small>instalador</small>
+          Descargar para Windows <small>16 MB</small>
+        </a>
+        <a class="btn demo" href="demo/">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 4.5v15l12-7.5z"/></svg>
+          Demo <small>en el navegador</small>
         </a>
       </div>
       <p class="release-note" id="release-note">Gratis y de código abierto. Se actualiza solo.</p>
-      <p class="try"><a href="demo/">Pruébalo en el navegador, sin instalar nada →</a></p>
 
       <picture>
-        <source srcset="img/editor-dark.png" media="(prefers-color-scheme: dark)">
-        <img class="shot" src="img/editor-light.png" width="1280" height="800" alt="Editor de LittleDraw con un diagrama dibujado a mano, la barra de herramientas y el panel de estilos">
+        <source srcset="img/portada-dark.png" media="(prefers-color-scheme: dark)">
+        <img class="shot" src="img/portada-light.png" width="1280" height="800" alt="Editor de LittleDraw con letras a mano «Draw Anything» y «Use Diagrams», dos planos cartesianos con curvas y la fórmula y = 5/9 x²">
       </picture>
     </section>
   </div>
 
   <section class="block">
     <div class="wrap">
-      <h2>Hecho para dar clase</h2>
-      <p class="sub">Lo que una pizarra de aula necesita y una herramienta de diagramas no suele tener.</p>
+      <h2>Más que diagramas</h2>
+      <p class="sub">Plano cartesiano, papel cuadriculado y fórmulas, con el mismo trazo a mano.</p>
       <div class="split">
         <ul>
           <li><strong>Plano cartesiano</strong><span>Tecla <kbd>C</kbd> y arrastra: cuadrícula, ejes, números y etiquetas. Las rectas se ajustan a sus intersecciones.</span></li>
@@ -199,7 +228,7 @@
           <li><strong>Subíndices y superíndices</strong><span><kbd>Ctrl</kbd> + <kbd>=</kbd> y <kbd>Ctrl</kbd> + <kbd>+</kbd> mientras escribes: H₂O, x², aₙ₊₁.</span></li>
           <li><strong>Presión del lápiz</strong><span>Trazos con grosor variable usando una tableta gráfica.</span></li>
         </ul>
-        <img class="shot" src="img/math-tools.png" width="1768" height="1068" loading="lazy" alt="Plano cartesiano con la recta y = x, un rectángulo con relleno en cuadrícula, una elipse con hachure y fórmulas con subíndices y superíndices">
+        <img class="shot dark" src="img/math-tools-dark.png" width="1768" height="1068" loading="lazy" alt="Plano cartesiano con la recta y = x, un rectángulo con relleno en cuadrícula, una elipse con hachure y fórmulas con subíndices y superíndices">
       </div>
     </div>
   </section>
@@ -266,7 +295,7 @@
     (function () {
       var ua = navigator.userAgent || "";
       var os = /Windows/i.test(ua) ? "windows" : /Linux|X11/i.test(ua) && !/Android/i.test(ua) ? "linux" : null;
-      var buttons = document.querySelectorAll(".downloads .btn");
+      var buttons = document.querySelectorAll(".downloads .btn.dl");
       var match = null;
       buttons.forEach(function (b) { if (b.dataset.os === os) match = b; });
       (match || buttons[0]).classList.add("primary");

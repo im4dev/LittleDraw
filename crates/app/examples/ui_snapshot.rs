@@ -6,23 +6,46 @@
 //! cargo run -p littledraw --example ui_snapshot -- out.png
 //! cargo run -p littledraw --example ui_snapshot -- out-dark.png dark
 //! ```
+//!
+//! Given a `.excalidraw` file it shows that drawing instead, nothing selected,
+//! in a 1280×800 window (the landing page's picture):
+//!
+//! ```sh
+//! cargo run -p littledraw --example ui_snapshot -- out.png samples/portada.excalidraw
+//! ```
 
 use littledraw_core::kurbo::Point;
-use littledraw_core::{Button, Editor, Key, Modifiers, Theme};
+use littledraw_core::{Button, Document, Editor, Key, Modifiers, Theme};
 
 #[path = "../src/render.rs"]
 mod render;
 
 const SIZE: (u32, u32) = (1100, 760);
+const FILE_SIZE: (u32, u32) = (1280, 800);
 
 fn main() {
-    let out = std::env::args().nth(1).unwrap_or_else(|| "ui_snapshot.png".to_owned());
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    let out = args.first().cloned().unwrap_or_else(|| "ui_snapshot.png".to_owned());
+    let dark = args.iter().any(|a| a == "dark");
+    let file = args.iter().find(|a| a.ends_with(".excalidraw"));
     let none = Modifiers::default();
     let mut ed = Editor::new(7);
-    ed.resize(f64::from(SIZE.0), f64::from(SIZE.1));
-    if std::env::args().nth(2).as_deref() == Some("dark") {
+    if dark {
         ed.set_theme(Theme::Dark);
     }
+    if let Some(file) = file {
+        let json = std::fs::read_to_string(file).unwrap_or_else(|err| panic!("could not read {file}: {err}"));
+        // Sized first: loading centers the drawing in the window.
+        ed.resize(f64::from(FILE_SIZE.0), f64::from(FILE_SIZE.1));
+        ed.load(Document::from_json(&json).expect("not a .excalidraw file"));
+        let frame = ed.frame();
+        if let Err(err) = render::write_png(&frame, FILE_SIZE.0, FILE_SIZE.1, &ed.document().files, out.as_ref()) {
+            eprintln!("could not write {out}: {err}");
+            std::process::exit(1);
+        }
+        return;
+    }
+    ed.resize(f64::from(SIZE.0), f64::from(SIZE.1));
     let drag = |ed: &mut Editor, tool: char, from: (f64, f64), to: (f64, f64)| {
         ed.key_down(Key::Char(tool), none);
         ed.pointer_down(Point::from(from), Button::Primary, none);

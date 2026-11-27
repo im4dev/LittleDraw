@@ -8,6 +8,8 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y l
 - Demo en el navegador ([im4dev.github.io/LittleDraw/demo](https://im4dev.github.io/LittleDraw/demo/)): el mismo editor compilado a WebAssembly y dibujado con Canvas 2D. Abre, guarda y exporta archivos, y recuerda el dibujo en el navegador.
 
 ### Cambiado
+- Icono nuevo: una pluma antigua en dorado, con el estilo del logotipo.
+- La página web pone primero la descarga, con un botón «Demo», el logotipo dorado y capturas nuevas.
 - Los dibujos nuevos guardan `"source": "littledraw"` en lugar de `"pizarra"`.
 
 ## [0.1.0] - 2026-11-27

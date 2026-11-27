@@ -68,6 +68,10 @@ En el código, una **pizarra** se llama `board` (`Board`, `boards/`, `board_id`)
 # Editor con la interfaz (añade "dark" para el tema oscuro)
 cargo run --release --example ui_snapshot -- docs/screenshots/editor-ui.png
 
+# Imagen de la página web: un dibujo con la interfaz, en claro y oscuro
+cargo run --release --example ui_snapshot -- docs/screenshots/portada-light.png samples/portada.excalidraw
+cargo run --release --example ui_snapshot -- docs/screenshots/portada-dark.png dark samples/portada.excalidraw
+
 # Exportación de una escena
 cargo run --release -- samples/demo.excalidraw --png docs/screenshots/demo-render.png --scale 2
 cargo run --release -- samples/matematicas.excalidraw --png docs/screenshots/math-tools.png --scale 2
@@ -101,8 +105,9 @@ Si el tag no coincide con `Cargo.toml`, el workflow falla antes de compilar.
 
 ### Windows
 
-- `crates/app/build.rs` incrusta `resources/icon.ico` en el `.exe`; regenera el `.ico` si cambia `resources/icon.png`:
+- El icono se dibuja en `resources/icon.svg` (y `icon-transparent.svg`, sin fondo). `resources/icon.png` sale de él, y `crates/app/build.rs` incrusta `resources/icon.ico` en el `.exe`:
   ```bash
+  rsvg-convert -w 512 -h 512 resources/icon.svg -o resources/icon.png
   magick resources/icon.png -define icon:auto-resize=256,128,64,48,32,24,16 resources/icon.ico
   ```
 - Sin un certificado de firma de código, SmartScreen muestra un aviso la primera vez que se abre el instalador.
