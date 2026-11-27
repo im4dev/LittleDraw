@@ -1,0 +1,101 @@
+name: Release
+
+# Pushing a tag like v0.2.0 builds LittleDraw for Linux and Windows, packs it
+# with Velopack (AppImage and Setup.exe, plus the update feeds and deltas
+# the installed apps read) and publishes everything as a GitHub release.
+# The tag must match the version in Cargo.toml.
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+  DOTNET_CLI_TELEMETRY_OPTOUT: 1
+  REPO_URL: ${{ github.server_url }}/${{ github.repository }}
+  # Keep in step with the velopack crate in crates/app/Cargo.toml.
+  VPK_VERSION: 1.2.161
+
+jobs:
+  linux:
+    # The oldest supported runner, so the AppImage runs on older glibc too.
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - id: version
+        run: ./.github/release-version.sh "$GITHUB_REF_NAME"
+      - run: sudo apt-get update && sudo apt-get install -y libwayland-dev libxkbcommon-dev pkg-config squashfs-tools
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo test --workspace --locked
+      - run: cargo build --release --locked
+      - name: Stage files
+        run: |
+          mkdir -p pack
+          cp target/release/littledraw LICENSE THIRD_PARTY_NOTICES.md pack/
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 9.0.x
+      - run: dotnet tool install -g vpk --version "$VPK_VERSION"
+      - name: Download the previous release (for delta updates)
+        run: vpk download github --repoUrl "$REPO_URL" --token "$GITHUB_TOKEN" --channel linux
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Pack
+        run: >
+          vpk pack --channel linux --runtime linux-x64
+          --packId LittleDraw --packVersion "${{ steps.version.outputs.version }}"
+          --packTitle LittleDraw --packAuthors "Isaias Mendez"
+          --packDir pack --mainExe littledraw --icon resources/icon.png
+      - name: Publish the release
+        run: >
+          vpk upload github --channel linux
+          --repoUrl "$REPO_URL" --token "$GITHUB_TOKEN"
+          --tag "$GITHUB_REF_NAME" --releaseName "LittleDraw ${{ steps.version.outputs.version }}"
+          --publish
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  windows:
+    # Adds its files to the release the Linux job created.
+    needs: linux
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - id: version
+        run: ./.github/release-version.sh "$GITHUB_REF_NAME"
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo build --release --locked
+      - name: Stage files
+        run: |
+          mkdir -p pack
+          cp target/release/littledraw.exe LICENSE THIRD_PARTY_NOTICES.md pack/
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 9.0.x
+      - run: dotnet tool install -g vpk --version "$VPK_VERSION"
+      - name: Download the previous release (for delta updates)
+        run: vpk download github --repoUrl "$REPO_URL" --token "$GITHUB_TOKEN" --channel win
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Pack
+        run: >
+          vpk pack --channel win --runtime win-x64
+          --packId LittleDraw --packVersion "${{ steps.version.outputs.version }}"
+          --packTitle LittleDraw --packAuthors "Isaias Mendez"
+          --packDir pack --mainExe littledraw.exe --icon resources/icon.ico
+      - name: Add to the release
+        run: >
+          vpk upload github --channel win
+          --repoUrl "$REPO_URL" --token "$GITHUB_TOKEN"
+          --tag "$GITHUB_REF_NAME" --releaseName "LittleDraw ${{ steps.version.outputs.version }}"
+          --publish --merge
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
