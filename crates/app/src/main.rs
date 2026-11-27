@@ -1,3 +1,5 @@
+// Release builds on Windows are GUI apps: no console window behind them.
+#![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
 //! Desktop shell: a winit window painted with vello (wgpu). All drawing
 //! logic lives in `littledraw-core`; this file translates input events, manages
 //! local workspace persistence, and turns display lists into GPU draw calls.
@@ -31,12 +33,14 @@ use winit::window::{
 
 mod render;
 mod store;
+mod update;
 
 use render::{encode, render_to_png_bytes, renderer_options, to_peniko, Images};
 use store::WorkspaceStore;
 
 const APP_NAME: &str = "LittleDraw";
 /// Desktop entry id (`littledraw.desktop`), also used as the Wayland app id.
+#[cfg(target_os = "linux")]
 const APP_ID: &str = "littledraw";
 /// Pixels per logical pixel of an exported PNG.
 const EXPORT_SCALE: f64 = 2.0;
@@ -102,6 +106,8 @@ struct App {
     last_edit: Option<Instant>,
     last_thumb: Option<Instant>,
     needs_thumb: bool,
+    /// Background self-update; `None` when not installed by Velopack.
+    updates: Option<update::Updates>,
 }
 
 impl App {
@@ -519,7 +525,7 @@ impl App {
             }
             ManagerAction::OpenWorkspaceFolder => {
                 if let Some(store) = &self.store {
-                    let _ = std::process::Command::new("xdg-open").arg(store.root()).spawn();
+                    open_folder(store.root());
                 }
             }
             ManagerAction::ToggleTheme(theme) => {
@@ -780,6 +786,19 @@ impl ApplicationHandler for App {
         self.update_title();
     }
 
+    /// An update finished downloading in the background.
+    fn proxy_wake_up(&mut self, _event_loop: &dyn ActiveEventLoop) {
+        let Some(version) = self.updates.as_mut().and_then(update::Updates::poll) else {
+            return;
+        };
+        if let Some(mgr) = &mut self.manager {
+            mgr.notice = Some(format!("LittleDraw {version} se instalará al cerrar la aplicación."));
+        }
+        if let Some((_, window)) = &self.surface {
+            window.request_redraw();
+        }
+    }
+
     fn about_to_wait(&mut self, event_loop: &dyn ActiveEventLoop) {
         if matches!(self.screen, Screen::Editor { board_id: Some(_) }) {
             let due_save = self.last_edit.is_some_and(|t| t.elapsed() >= AUTOSAVE_DEBOUNCE);
@@ -805,6 +824,9 @@ impl ApplicationHandler for App {
         match event {
             WindowEvent::CloseRequested => {
                 self.save_managed_board(true);
+                if let Some(updates) = &self.updates {
+                    updates.install_on_exit();
+                }
                 event_loop.exit();
                 return;
             }
@@ -1000,22 +1022,32 @@ fn untitled_path() -> PathBuf {
         .expect("some untitled name is free")
 }
 
-fn config_dir() -> Option<PathBuf> {
-    std::env::var_os("XDG_CONFIG_HOME")
-        .map(PathBuf::from)
-        .filter(|dir| dir.is_absolute())
-        .or_else(|| Some(PathBuf::from(std::env::var_os("HOME")?).join(".config")))
+/// Shows `dir` in the system's file manager.
+fn open_folder(dir: &Path) {
+    let opener = if cfg!(windows) {
+        "explorer"
+    } else if cfg!(target_os = "macos") {
+        "open"
+    } else {
+        "xdg-open"
+    };
+    if let Err(err) = std::process::Command::new(opener).arg(dir).spawn() {
+        eprintln!("could not open {}: {err}", dir.display());
+    }
 }
 
-/// Where the chosen theme is remembered between runs:
-/// `$XDG_CONFIG_HOME/littledraw/theme` (or `~/.config/littledraw/theme`).
+/// Where the chosen theme is remembered between runs, inside
+/// [`store::config_dir`].
 fn theme_file() -> Option<PathBuf> {
-    Some(config_dir()?.join("littledraw").join("theme"))
+    Some(store::config_dir()?.join("theme"))
 }
 
 fn remembered_theme() -> Option<Theme> {
-    // Earlier versions kept the choice in `board/theme`.
-    let legacy = || std::fs::read_to_string(config_dir()?.join("board").join("theme")).ok();
+    // Earlier versions kept the choice in `~/.config/board/theme`.
+    let legacy = || {
+        let config = store::config_dir()?;
+        std::fs::read_to_string(config.parent()?.join("board").join("theme")).ok()
+    };
     let saved = std::fs::read_to_string(theme_file()?).ok().or_else(legacy)?;
     match saved.trim() {
         "dark" => Some(Theme::Dark),
@@ -1072,6 +1104,7 @@ fn parse_args() -> Result<Args, String> {
 }
 
 fn main() {
+    update::run_hooks();
     let args = parse_args().unwrap_or_else(|err| {
         if !err.is_empty() {
             eprintln!("error: {err}");
@@ -1157,9 +1190,11 @@ fn main() {
         last_edit: None,
         last_thumb: None,
         needs_thumb: false,
+        updates: None,
     };
     app.preload_thumbnails();
 
     let event_loop = EventLoop::new().expect("failed to create event loop");
+    app.updates = update::Updates::start(event_loop.create_proxy());
     event_loop.run_app(app).expect("event loop failed");
 }

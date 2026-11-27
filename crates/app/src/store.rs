@@ -30,6 +30,32 @@ fn write_file_atomic(path: &Path, bytes: &[u8]) -> Result<(), String> {
     })
 }
 
+/// LittleDraw's folder for user data: `$XDG_DATA_HOME/littledraw`
+/// (`~/.local/share/littledraw`), or `%APPDATA%\LittleDraw` on Windows.
+pub fn data_dir() -> Option<PathBuf> {
+    user_dir("XDG_DATA_HOME", ".local/share")
+}
+
+/// LittleDraw's folder for settings: `$XDG_CONFIG_HOME/littledraw`
+/// (`~/.config/littledraw`), or `%APPDATA%\LittleDraw` on Windows.
+pub fn config_dir() -> Option<PathBuf> {
+    user_dir("XDG_CONFIG_HOME", ".config")
+}
+
+#[cfg(windows)]
+fn user_dir(_xdg_var: &str, _home_fallback: &str) -> Option<PathBuf> {
+    std::env::var_os("APPDATA").map(|dir| PathBuf::from(dir).join("LittleDraw"))
+}
+
+#[cfg(not(windows))]
+fn user_dir(xdg_var: &str, home_fallback: &str) -> Option<PathBuf> {
+    let base = std::env::var_os(xdg_var)
+        .map(PathBuf::from)
+        .filter(|dir| dir.is_absolute())
+        .or_else(|| Some(PathBuf::from(std::env::var_os("HOME")?).join(home_fallback)))?;
+    Some(base.join("littledraw"))
+}
+
 /// Moves the workspace at `legacy` to `root` unless `root` already exists,
 /// and leaves a symlink at `legacy` so an older build still finds the data.
 /// Returns the folder to use: `legacy` itself if it could not be moved.
@@ -58,25 +84,17 @@ pub struct WorkspaceStore {
 }
 
 impl WorkspaceStore {
-    /// `$LITTLEDRAW_WORKSPACE`, else `$XDG_DATA_HOME/littledraw/workspace`
-    /// (`~/.local/share/littledraw/workspace`). A workspace that earlier
-    /// versions kept in `~/.config/Boards/workspace` is moved there first.
+    /// `$LITTLEDRAW_WORKSPACE`, else `workspace` inside [`data_dir`]. A
+    /// workspace that earlier versions kept in `~/.config/Boards/workspace`
+    /// is moved there first.
     pub fn default_root() -> PathBuf {
         if let Some(custom) = std::env::var_os("LITTLEDRAW_WORKSPACE").filter(|v| !v.is_empty()) {
             return PathBuf::from(custom);
         }
-        let home = std::env::var_os("HOME").map(PathBuf::from);
-        let xdg_dir = |var: &str, fallback: &str| {
-            std::env::var_os(var)
-                .map(PathBuf::from)
-                .filter(|dir| dir.is_absolute())
-                .or_else(|| home.as_ref().map(|home| home.join(fallback)))
-        };
-        let Some(data) = xdg_dir("XDG_DATA_HOME", ".local/share") else {
+        let Some(root) = data_dir().map(|dir| dir.join("workspace")) else {
             return PathBuf::from(".littledraw-workspace");
         };
-        let root = data.join("littledraw").join("workspace");
-        match xdg_dir("XDG_CONFIG_HOME", ".config") {
+        match config_dir().as_deref().and_then(Path::parent) {
             Some(config) => adopt_legacy_workspace(&config.join("Boards").join("workspace"), root),
             None => root,
         }
